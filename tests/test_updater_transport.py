@@ -100,7 +100,7 @@ class UpdaterTransportTests(unittest.TestCase):
             mock.patch.object(
                 self.module,
                 "_final_url",
-                return_value="https://github.com/MRDonnii/dantherm-hch5-control/releases/tag/v1.2.0",
+                return_value="https://github.com/MRDonnii/dantherm-control/releases/tag/v1.2.0",
             ),
         ):
             info = self.module.update_info("stable")
@@ -122,7 +122,7 @@ class UpdaterTransportTests(unittest.TestCase):
         request = urlopen.call_args.args[0]
         self.assertEqual(
             request.full_url,
-            "https://codeload.github.com/MRDonnii/dantherm-hch5-control/tar.gz/beta%2F1.1-modern-controller",
+            "https://codeload.github.com/MRDonnii/dantherm-control/tar.gz/beta%2F1.1-modern-controller",
         )
         self.assertNotIn("api.github.com", request.full_url)
 

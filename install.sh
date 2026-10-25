@@ -27,7 +27,7 @@ done
 
 if [[ ${beta} -eq 1 ]]; then
   [[ -z ${source_ref} ]] || { echo "Use either --beta or --ref, not both." >&2; exit 2; }
-  source_ref=$(curl -fsSL "https://github.com/MRDonnii/dantherm-hch5-control/releases.atom" \
+  source_ref=$(curl -fsSL "https://github.com/MRDonnii/dantherm-control/releases.atom" \
     | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+' | sort -V | tail -1)
   [[ -n ${source_ref} ]] || { echo "Could not resolve the current beta release." >&2; exit 1; }
 fi
@@ -44,12 +44,12 @@ if [[ ! -f ${source_dir}/gateway/dantherm_controller_gateway.py ]]; then
   trap '[[ -n ${temp_dir} ]] && rm -rf -- "${temp_dir}"' EXIT
   if [[ -n ${source_ref} ]]; then
     encoded_ref=${source_ref//\//%2F}
-    tarball_url="https://codeload.github.com/MRDonnii/dantherm-hch5-control/tar.gz/${encoded_ref}"
+    tarball_url="https://codeload.github.com/MRDonnii/dantherm-control/tar.gz/${encoded_ref}"
   else
-    latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/MRDonnii/dantherm-hch5-control/releases/latest)
+    latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/MRDonnii/dantherm-control/releases/latest)
     latest_tag=${latest_url##*/}
     [[ -n ${latest_tag} && ${latest_tag} != latest ]] || { echo "Could not resolve latest release tag." >&2; exit 1; }
-    tarball_url="https://codeload.github.com/MRDonnii/dantherm-hch5-control/tar.gz/${latest_tag}"
+    tarball_url="https://codeload.github.com/MRDonnii/dantherm-control/tar.gz/${latest_tag}"
   fi
   curl -fsSL "${tarball_url}" | tar -xz -C "${temp_dir}" --strip-components=1
   source_dir=${temp_dir}

@@ -61,7 +61,7 @@ Brug ikke `/dev/ttyUSB0`; nummeret kan ændre sig efter reboot.
 Erstat adapterstien i kommandoen:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MRDonnii/dantherm-hch5-control/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/MRDonnii/dantherm-control/main/install.sh \
   | sudo bash -s -- \
       --device /dev/serial/by-id/usb-DIN_ADAPTER \
       --enable-onewire
@@ -94,13 +94,13 @@ Første besøg kræver, at ejeren selv opretter brugernavn og adgangskode. Der f
 
 Den komplette gennemgang – også controller-API, Smart Auto-rum, dashboardkort og kr-værdier – står i [Kom godt i gang](kom-godt-i-gang.da.md#5-home-assistant-se-anlægget).
 
-1. Installer [Dantherm HCH5 Control-integrationen](https://github.com/MRDonnii/dantherm-hch5-control-ha) via HACS.
+1. Installer [Dantherm HCH5 Control-integrationen](https://github.com/MRDonnii/dantherm-control-ha) via HACS.
 2. Genstart Home Assistant.
 3. Åbn **Indstillinger → Enheder og tjenester → Tilføj integration**.
 4. Vælg **Dantherm HCH5 Control** og derefter **RS485 over TCP**.
 5. Angiv Linux-maskinens IP og port `4196`.
 
-[Åbn repositoryet direkte i HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=MRDonnii&repository=dantherm-hch5-control-ha&category=integration)
+[Åbn repositoryet direkte i HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=MRDonnii&repository=dantherm-control-ha&category=integration)
 
 Den klassiske rå TCP-forbindelse (lyttedata) er read-only. Controllerfunktionerne bruger separat HTTP API med bearer-token; kun Pi-controlleren oversætter intent til de allerede verificerede RS485-writes.
 
