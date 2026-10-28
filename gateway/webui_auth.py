@@ -405,6 +405,12 @@ class AuthManager:
             except OSError:
                 pass
 
+    def first_admin(self):
+        """Username of the first active administrator, or None."""
+        data = self.load()
+        admins = self._active_admins(data) if data else []
+        return admins[0]["username"] if admins else None
+
     def session(self, username, remember=False):
         user = self._find(self.load(), username)
         if user:

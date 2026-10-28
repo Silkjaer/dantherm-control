@@ -137,8 +137,9 @@ class DashboardTests(unittest.TestCase):
                 server.auth.path=Path(tmp)/"auth.json"; server.auth.save("admin","long-test-password",False)
                 index = urllib.request.urlopen(f"http://127.0.0.1:{port}/").read()
                 self.assertIn(b"HCH5 Control", index)
-                self.assertIn(b"/assets/v2-", index)
-                self.assertIn(b"/assets/favicon.svg", index)
+                # Relative, so the page also loads below Home Assistant's ingress path.
+                self.assertIn(b'src="assets/v2-', index)
+                self.assertIn(b'href="assets/favicon.svg"', index)
                 icon = urllib.request.urlopen(f"http://127.0.0.1:{port}/assets/favicon.svg")
                 self.assertEqual(icon.headers.get_content_type(), "image/svg+xml")
                 self.assertIn(b"<svg", icon.read())

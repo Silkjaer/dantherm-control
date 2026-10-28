@@ -63,6 +63,10 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
         # Contact from Home Assistant (any request with the right API key) and
         # requests with a wrong key, e.g. after a new key was generated.
         self.started_at = time.time()
+        # Address of Home Assistant's ingress proxy (172.30.32.2 in a Home
+        # Assistant app). Requests from it carry the HA user's login, so they
+        # are let in as the first administrator; empty disables this.
+        self.ingress_proxy = os.getenv("DANTHERM_INGRESS_PROXY", "").strip()
         self.ha_last_ok: float | None = None
         self.ha_last_rejected: float | None = None
         self.ha_rejected_ip: str | None = None
@@ -112,8 +116,49 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
         dashboard = self
 
         class Handler(BaseHTTPRequestHandler):
+            def _ingress_path(self) -> str:
+                """Home Assistant's ingress prefix for this request, or ""."""
+                path = (self.headers.get("X-Ingress-Path") or "").rstrip("/")
+                return path if path.startswith("/api/hassio_ingress/") else ""
+
+            def _from_ingress_proxy(self) -> bool:
+                return bool(dashboard.ingress_proxy) and self.client_address[0] == dashboard.ingress_proxy \
+                    and bool(self._ingress_path())
+
+            def _redirect(self, location: str) -> None:
+                self.send_response(302)
+                self.send_header("Location", self._ingress_path() + location)
+                self.end_headers()
+
             def _session(self):
-                return dashboard.auth.authenticate_cookie(self.headers.get("Cookie", ""))
+                session = dashboard.auth.authenticate_cookie(self.headers.get("Cookie", ""))
+                if session is None and self._from_ingress_proxy():
+                    session = self._ingress_session()
+                return session
+
+            def _ingress_session(self):
+                """Log a Home Assistant user in through ingress, once per request.
+
+                Home Assistant has already authenticated the user, and app
+                panels are shown to Home Assistant administrators only. The
+                new session's cookie is sent with this response.
+                """
+                sid = getattr(self, "_ingress_sid", None)
+                if sid is None:
+                    admin = dashboard.auth.first_admin()
+                    if admin is None:
+                        return None
+                    sid, _csrf = dashboard.auth.session(admin)
+                    self._ingress_sid = sid
+                return dashboard.auth.sessions.get(sid)
+
+            def end_headers(self):
+                sid = getattr(self, "_ingress_sid", None)
+                if sid is not None and not getattr(self, "_ingress_cookie_sent", False):
+                    self._ingress_cookie_sent = True
+                    max_age = dashboard.auth.session_max_age(sid)
+                    self.send_header("Set-Cookie", f"dantherm_session={sid}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}")
+                super().end_headers()
 
             def _require_auth(self):
                 session = self._session()
@@ -210,12 +255,12 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
                     self._file(target, ASSET_TYPES.get(target.suffix))
                     return
                 if not dashboard.auth.configured():
-                    self.send_response(302); self.send_header("Location", "/setup"); self.end_headers(); return
+                    self._redirect("/setup"); return
                 if self._session() is None and dashboard.auth.enabled():
                     if parsed.path in ("/state.json", "/api", "/history.json") or parsed.path.startswith("/api/"):
                         # A redirect would hand fetch() the login page instead of JSON.
                         self._login_required(); return
-                    self.send_response(302); self.send_header("Location", "/login"); self.end_headers(); return
+                    self._redirect("/login"); return
 
                 if parsed.path in ("/", "/index.html"):
                     self._file(dashboard.web_root / "index.html", "text/html; charset=utf-8")

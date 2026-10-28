@@ -7,6 +7,7 @@ import { useTopbarNotice } from "../lib/topbar-notice";
 
 const api = vi.hoisted(() => ({ available: false, checks: vi.fn() }));
 vi.mock("../lib/api", () => ({
+  appUrl: (path: string) => path.replace(/^\//, ""),
   requestJson: async (endpoint: string) => endpoint === "/api/auth/status"
     ? { csrf: "test-token" }
     : { available: true, bus_traffic: true, version: "1.2.0-beta.36" },
