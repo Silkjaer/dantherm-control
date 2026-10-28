@@ -66,6 +66,7 @@ To let weather humidity inform ventilation, also enable humidity smart control a
 - Dantherm HCH5 MK1 with HAC1, or an **HCH5 MKII** (beta, see [HCH5 MKII](#hch5-mkii-beta));
 - Raspberry Pi 2B or newer with Raspberry Pi OS Bookworm, Debian 12 or Ubuntu 22.04/24.04;
 - a Linux-supported USB-RS485 adapter (preferably galvanically isolated), bus settings `19200 8E1`;
+  an RS485-to-Ethernet adapter in transparent TCP mode also works: set `serial.port` to `socket://ADAPTER-IP:PORT` and the line settings in the adapter;
 - optional DS18B20 1-Wire sensors on the Pi's GPIO4 (T2, afterheat water, loft);
 - optional power meter on the unit's supply (for example a Shelly) in Home Assistant.
 

@@ -11,7 +11,9 @@ SupplementaryGroups=dialout video
 WorkingDirectory=/opt/dantherm-passivelink-webui
 EnvironmentFile=/etc/dantherm-passivelink-webui/gateway.env
 UMask=0027
-ExecStartPre=/bin/sh -c 'test -e "$RS485_DEVICE"'
+# A pyserial URL (socket://host:port for an RS485-to-Ethernet adapter) has no
+# device node to wait for.
+ExecStartPre=/bin/sh -c 'case "$RS485_DEVICE" in *://*) exit 0 ;; esac; test -e "$RS485_DEVICE"'
 # Persistent runtime state is prepared explicitly before privilege drop. Do not
 # put /var/lib/dantherm-hch5-ha behind an additional systemd mount namespace:
 # older Pi/systemd combinations have made the otherwise writable state path
