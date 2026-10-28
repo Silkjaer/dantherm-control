@@ -196,7 +196,9 @@ export function OverviewPage() {
   const outdoor = first(unit, "outdoor_temp", "outdoor_temperature");
   const extract = first(unit, "extract_temp", "extract_temperature");
   const exhaust = first(unit, "exhaust_temp", "exhaust_temperature");
-  const afterHeater = first(controller, "actual_supply_air_temperature") ?? first(unit, "heating_coil_after_temperature");
+  // Without HAC1 there is no T2AH; the supply air is the unit's own T2.
+  const afterHeater = first(controller, "actual_supply_air_temperature") ?? first(unit, "heating_coil_after_temperature")
+    ?? (hasAfterheat(unit) ? null : first(unit, "supply_temperature", "supply_temp"));
   const frost = first(controller, "actual_afterheat_frost_temperature") ?? first(unit, "heating_coil_frost_temperature");
   const flowWater = first(unit, "flow_temperature");
   const returnWater = first(unit, "return_temperature");
@@ -290,6 +292,8 @@ export function OverviewPage() {
   const haWarning = haLink.required && haLink.state !== null && haLink.state !== "online" && haLink.state !== "waiting";
 
   const afterheat = hasAfterheat(unit);
+  const sensorHistory = afterheat ? SENSOR_HISTORY
+    : { ...SENSOR_HISTORY, afterHeater: { title: "Indblæsning · T2", key: "supply_temp", color: "green" as const } };
   const afterheatCard = (
     <article className="surface afterheat-setpoint-card">
       <AfterheatThermostat value={shownAfterheat} onChange={setAfterheatTarget} heating={heating} lockout={afterheatLockout}
@@ -476,10 +480,10 @@ export function OverviewPage() {
           {coolActive && <button type="button" className="standby-on-action" disabled={busy !== null} onClick={() => { setCoolDialog(false); void command("cool-stop", { cool_boost_minutes: 0 }, "Køl stoppet."); }}>Stop køl</button>}
         </section>
       </div>, document.body)}
-      {activeSensor && SENSOR_HISTORY[activeSensor] && createPortal(<div className="sensor-history-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setActiveSensor(null); }}>
+      {activeSensor && sensorHistory[activeSensor] && createPortal(<div className="sensor-history-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setActiveSensor(null); }}>
         <section className="sensor-history-dialog surface" role="dialog" aria-modal="true" aria-labelledby="sensor-history-title">
-          <div className="sensor-history-heading"><div><span className="eyebrow">SENESTE 24 TIMER</span><h2 id="sensor-history-title">{SENSOR_HISTORY[activeSensor].title}</h2></div><button ref={closeHistoryRef} type="button" aria-label="Luk temperaturgraf" onClick={() => setActiveSensor(null)}><X size={20}/></button></div>
-          {historyError ? <p className="sensor-history-message" role="alert">{historyError}</p> : historyLoading ? <div className="history-chart-empty" style={{ height: 230 }}>Henter historik…</div> : <HistoryChart height={230} unit={SENSOR_HISTORY[activeSensor].unit ?? "°C"} samples={historySamples} series={[{ key: SENSOR_HISTORY[activeSensor].key, label: SENSOR_HISTORY[activeSensor].title, color: SENSOR_HISTORY[activeSensor].color }]}/>}
+          <div className="sensor-history-heading"><div><span className="eyebrow">SENESTE 24 TIMER</span><h2 id="sensor-history-title">{sensorHistory[activeSensor].title}</h2></div><button ref={closeHistoryRef} type="button" aria-label="Luk temperaturgraf" onClick={() => setActiveSensor(null)}><X size={20}/></button></div>
+          {historyError ? <p className="sensor-history-message" role="alert">{historyError}</p> : historyLoading ? <div className="history-chart-empty" style={{ height: 230 }}>Henter historik…</div> : <HistoryChart height={230} unit={sensorHistory[activeSensor].unit ?? "°C"} samples={historySamples} series={[{ key: sensorHistory[activeSensor].key, label: sensorHistory[activeSensor].title, color: sensorHistory[activeSensor].color }]}/>}
         </section>
       </div>, document.body)}
     </section>
