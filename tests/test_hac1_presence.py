@@ -109,6 +109,29 @@ class GatewayWithoutHac1Tests(unittest.TestCase):
                 gateway.write_afterheat_setpoint(object(), 20)
             block.assert_not_called()
 
+    def test_controller_afterheat_is_a_no_op_without_hac1(self):
+        gateway = self.make_gateway()
+        gateway.hac1_presence().reported(False)
+        with patch.object(Gateway, "queue_controller_hardware") as queue:
+            self.assertIsNone(gateway.controller_afterheat_setpoint(20))
+        queue.assert_not_called()
+
+    def test_controller_afterheat_still_tries_an_unconfirmed_hac1(self):
+        gateway = self.make_gateway()
+        with patch.object(Gateway, "queue_controller_hardware", return_value=20) as queue:
+            self.assertEqual(gateway.controller_afterheat_setpoint(20), 20)
+        queue.assert_called_once_with("afterheat_setpoint", 20)
+
+    def test_failed_refresh_is_an_error_only_once_hac1_has_answered(self):
+        gateway = self.make_gateway()
+        failure = RuntimeError("afterheat T5 source word unavailable")
+        with patch.object(Gateway, "write_afterheat_temperature_block", side_effect=failure):
+            with self.assertNoLogs("dantherm_gateway", level="ERROR"):
+                self.assertFalse(gateway.refresh_afterheat_temperature_block_if_due(object(), now=1e6))
+            gateway.hac1_presence().seen()
+            with self.assertLogs("dantherm_gateway", level="ERROR"):
+                self.assertFalse(gateway.refresh_afterheat_temperature_block_if_due(object(), now=2e6))
+
     def test_installations_with_hac1_keep_reading_it(self):
         gateway = self.make_gateway()
         with patch.object(Gateway, "_read_register_block", return_value=[0x3000, 0x1100, 0, 800, 0]):
