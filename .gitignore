@@ -5,3 +5,6 @@ node_modules/
 *.tsbuildinfo
 *.sqlite3
 webui-auth.json
+docker/data/
+docker/logs/
+docker/.env

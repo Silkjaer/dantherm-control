@@ -1,0 +1,31 @@
+# Read-only test of HCH5 Control against a live bus through an RS485-to-
+# Ethernet adapter. Only rs485-readonly talks to the adapter, and it never
+# writes to it, so the controller cannot put a byte on the bus.
+#
+#   RS485_ADAPTER=192.168.1.200:4196 docker compose up -d --build
+#
+# WebUI: http://localhost:8088
+services:
+  rs485-readonly:
+    image: python:3.11-slim-bookworm
+    command: ["python", "-u", "/app/readonly_proxy.py"]
+    environment:
+      UPSTREAM: ${RS485_ADAPTER:?set RS485_ADAPTER=host:port of the RS485 TCP adapter}
+      LISTEN: 0.0.0.0:4300
+      DROP_LOG: /logs/dropped-writes.log
+    volumes:
+      - ./proxy:/app:ro
+      - ./logs:/logs
+    restart: unless-stopped
+
+  controller:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on: [rs485-readonly]
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./config/controller.yaml:/etc/dantherm-passivelink-webui/controller.yaml:ro
+      - ./data:/var/lib/dantherm-hch5-ha
+    restart: unless-stopped

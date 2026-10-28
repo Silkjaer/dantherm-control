@@ -1,0 +1,42 @@
+# Installer defaults from install.sh, except the serial port, which points at
+# the read-only proxy from docker-compose.yml.
+device:
+  id: dantherm_hch5
+  name: Dantherm HCH5
+mqtt:
+  enabled: false
+  topic_prefix: dantherm
+  discovery_prefix: homeassistant
+  retain: true
+serial:
+  port: socket://rs485-readonly:4300
+  baudrate: 19200
+  parity: E
+  active_reads_enabled: true
+  master_mode: true
+raw_tcp:
+  enabled: true
+  bind: 0.0.0.0
+  port: 4196
+  max_clients: 4
+dashboard:
+  enabled: true
+  bind: 0.0.0.0
+  port: 8080
+  preheater_url: http://127.0.0.1:4197/temperatures
+controller:
+  state_file: /var/lib/dantherm-hch5-ha/controller.json
+  tick_seconds: 2.0
+  master_arbitration:
+    detection_window_seconds: 2
+    detection_min_foreign_writes: 2
+    release_timeout_seconds: 10
+    startup_observation_seconds: 10
+    own_echo_ttl_seconds: 0.2
+control:
+  enabled: false
+  fireplace_enabled: false
+diagnostic_capture:
+  directory: /var/lib/dantherm-hch5-ha/direction-captures
+filter:
+  enabled: false
