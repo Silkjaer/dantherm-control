@@ -34,6 +34,7 @@ import yaml
 from controller_core import HardwareAdapter
 from controller_dashboard_server import ControllerDashboardHttpServer
 from controller_runtime import ControllerRuntime
+from hac1_presence import HAC1_SLAVE, Hac1Presence
 from sensor_freshness import SENSOR_SAMPLE_TIMESTAMPS, fresh_sensor_value
 
 LOG = logging.getLogger("dantherm_gateway")
@@ -59,6 +60,7 @@ INFO_STATE_KEYS = {
     "control_status",
     "gateway_mode",
     "hac1_connected",
+    "hac1_presence",
     "operating_mode",
     "current_level",
     "bypass_active",
@@ -797,7 +799,7 @@ class Gateway:
             except Exception as error:
                 # A missing HAC1 ack is routine and retried; the controller
                 # runtime logs it rate-limited, so no traceback per attempt.
-                if "missing FC16 acknowledgement" in str(error):
+                if "missing FC16 acknowledgement" in str(error) or "HAC1 not installed" in str(error):
                     LOG.debug("Controller hardware action failed: %s: %s", action, error)
                 else:
                     LOG.exception("Controller hardware action failed: %s", action)
@@ -1370,6 +1372,11 @@ class Gateway:
         fn = frame[1]
         if fn in (3, 4) and len(frame) == 8:
             return  # request, no data payload
+        if slave == HAC1_SLAVE and (
+            (fn in (3, 4) and len(frame) == 5 + frame[2]) or (fn == 16 and len(frame) == 8)
+        ):
+            # A read response or write acknowledgement from HAC1 itself.
+            self.hac1_seen()
         if slave == 0x40 and fn == 16 and len(frame) >= 19:
             register = int.from_bytes(frame[2:4], "big")
             count = int.from_bytes(frame[4:6], "big")
@@ -1572,6 +1579,8 @@ class Gateway:
                 # 146=3 is the T2 feed selector the Pi itself writes every
                 # 3 s (feed_unit_supply_temperature_if_due), not a HAC1 state.
                 self.publish("hac1_connected", value == 1)
+                self.hac1_presence().reported(value == 1)
+                self.publish("hac1_presence", self.hac1_presence().state)
             self.update_mode()
 
     def update_mode(self):
@@ -1771,6 +1780,7 @@ class Gateway:
                 header_seen = index >= 0
                 if tail is not None and tail in received:
                     self.last_afterheat_block_at = time.monotonic()
+                    self.hac1_seen()
                     return
         raise RuntimeError(f"missing FC16 acknowledgement for register {start}")
 
@@ -1814,6 +1824,8 @@ class Gateway:
         if now - self.last_afterheat_temperature_refresh < 4.0:
             return False
         if not self.controller.hardware_writes_allowed():
+            return False
+        if self.hac1_presence().absent:
             return False
         self.last_afterheat_temperature_refresh = now
         try:
@@ -1869,6 +1881,8 @@ class Gateway:
         """
         if value is not None and not 10 <= value <= 35:
             raise ValueError("afterheat setpoint must be 10..35 C or OFF")
+        if self.hac1_presence().absent:
+            raise RuntimeError("HAC1 not installed")
         command = [1, 0 if value is None else value * 256, 15, 0x17FE, 0xFF03]
         self._write_afterheat_block(
             ser, 185, command, "CONTROL_AFTERHEAT_THERMOSTAT"
@@ -1936,7 +1950,39 @@ class Gateway:
                     )
         return None
 
+    def hac1_presence(self) -> Hac1Presence:
+        presence = getattr(self, "hac1", None)
+        if presence is None:
+            presence = self.hac1 = Hac1Presence()
+        return presence
+
+    def hac1_seen(self) -> None:
+        self.hac1_presence().seen()
+        self.publish("hac1_presence", self.hac1_presence().state)
+
     def read_register_block(
+        self, ser: serial.Serial, slave: int, start: int, count: int, function: int = 3
+    ) -> list[int] | None:
+        """Read a block actively, skipping HAC1 while it is known to be missing."""
+        presence = self.hac1_presence()
+        if slave == HAC1_SLAVE and not presence.allow_read():
+            return None
+        values = self._read_register_block(ser, slave, start, count, function)
+        if slave != HAC1_SLAVE:
+            if values is not None:
+                self.last_unit_answer = time.monotonic()
+        elif values is not None:
+            self.hac1_seen()
+        elif self._active_read_allowed():
+            before = presence.state
+            unit_answering = time.monotonic() - getattr(self, "last_unit_answer", -1e9) < 10.0
+            presence.missed(unit_answering=unit_answering)
+            if presence.state != before:
+                LOG.warning("HAC1 did not answer %s reads; HAC1 traffic paused", presence.MISSES_TO_ABSENT)
+                self.publish("hac1_presence", presence.state)
+        return values
+
+    def _read_register_block(
         self, ser: serial.Serial, slave: int, start: int, count: int, function: int = 3
     ) -> list[int] | None:
         request = self.read_frame(start, count, slave=slave, function=function)
