@@ -18,7 +18,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { postJson, requestJson } from "../lib/api";
+import { appUrl, postJson, requestJson } from "../lib/api";
 import { usePollHealth } from "../lib/connection";
 import { TopbarNoticeContext } from "../lib/topbar-notice";
 import { haLinkText, readHaLink } from "../lib/haLink";
@@ -106,7 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const visibleNavigation = navigation.filter(item => item[3] === null || session.can(item[3]));
   const logout = async () => {
     try { await postJson("/api/auth/logout", {}, auth.csrf ?? undefined); } catch { /* go to login regardless */ }
-    window.location.href = "/login";
+    window.location.href = appUrl("/login");
   };
 
   const effectiveTheme = useMemo(() => {
@@ -184,7 +184,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primær navigation">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true"><img src="/assets/brand-mark.svg" alt="" width="40" height="40" /></div>
+          <div className="brand-mark" aria-hidden="true"><img src={appUrl("/assets/brand-mark.svg")} alt="" width="40" height="40" /></div>
           {!collapsed && <div className="brand-copy"><strong>HCH5 Control</strong><span>Modern local ventilation</span></div>}
           <button className="icon-button collapse-button" type="button" onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? "Fold menu ud" : "Fold menu sammen"}>
             {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}

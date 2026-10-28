@@ -18,13 +18,20 @@ function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Resolve an app path such as "/api/auth/status" against the page instead of
+ *  the host root, so the WebUI also works below a prefix like Home Assistant's
+ *  ingress path. The app uses hash routing, so the page path never changes. */
+export function appUrl(path: string): string {
+  return path.startsWith("/") ? path.slice(1) : path;
+}
+
 let loginRedirect = false;
 
 /** The Pi answers 401 with login_required when the session has ended, e.g. after a restart. */
 function redirectToLogin() {
-  if (loginRedirect || window.location.pathname === "/login") return;
+  if (loginRedirect || window.location.pathname.endsWith("/login")) return;
   loginRedirect = true;
-  window.location.assign("/login");
+  window.location.assign(appUrl("/login"));
 }
 
 export async function requestJson<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -35,7 +42,7 @@ export async function requestJson<T>(endpoint: string, options: RequestOptions =
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch(appUrl(endpoint), {
         cache: "no-store",
         credentials: "same-origin",
         ...init,

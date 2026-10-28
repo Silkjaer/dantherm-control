@@ -39,6 +39,15 @@ describe("ended session", () => {
     vi.stubGlobal("location", { ...window.location, pathname: "/", assign });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Log ind igen", login_required: true }), { status: 401 })));
     await expect(requestJson("/state.json")).rejects.toMatchObject({ status: 401 });
-    expect(assign).toHaveBeenCalledWith("/login");
+    expect(assign).toHaveBeenCalledWith("login");
+  });
+
+  it("stays below a path prefix such as Home Assistant's ingress", async () => {
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ error: "Log ind igen", login_required: true }), { status: 401 }));
+    vi.stubGlobal("location", { ...window.location, pathname: "/api/hassio_ingress/abc/", assign: vi.fn() });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(requestJson("/api/controller/state")).rejects.toMatchObject({ status: 401 });
+    // Relative to the page, so the browser keeps the ingress prefix.
+    expect(fetchMock.mock.calls[0][0]).toBe("api/controller/state");
   });
 });

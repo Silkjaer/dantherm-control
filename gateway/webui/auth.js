@@ -2,7 +2,9 @@
 const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 const token = params.get("token") || "";
-let mode = { "/setup": "setup", "/forgot": "forgot", "/reset": "reset" }[location.pathname] || "login";
+// Paths are relative to the page, so the login also works below a prefix such
+// as Home Assistant's ingress path; the mode is the last path segment.
+let mode = { setup: "setup", forgot: "forgot", reset: "reset" }[location.pathname.split("/").pop()] || "login";
 
 function show(id, visible) { const el = $(id); el.hidden = !visible; el.querySelectorAll("input").forEach(input => { input.disabled = !visible; }); }
 function message(text, ok = false) { $("#message").textContent = text; $("#message").classList.toggle("ok", ok); }
@@ -39,12 +41,12 @@ function networkMessage() { return "Kunne ikke kontakte HCH5 Control. Kontroller
 
 async function status() {
   try {
-    const r = await fetch("/api/auth/status");
+    const r = await fetch("api/auth/status");
     const s = await responseJson(r);
     if (!r.ok) throw Error(s.error || "Kunne ikke hente login-status");
     if (!s.configured) mode = "setup";
     else if (mode === "setup") mode = "login";
-    if (s.authenticated && mode !== "reset") { location.replace("/"); return; }
+    if (s.authenticated && mode !== "reset") { location.replace("./"); return; }
     render(s.password_reset_available === true);
     if (mode === "reset") {
       const check = await responseJson(await fetch(`/api/auth/reset/check?token=${encodeURIComponent(token)}`));
@@ -71,18 +73,18 @@ $("#auth-form").addEventListener("submit", async e => {
   $("#submit").disabled = true;
   try {
     if (mode === "forgot") {
-      await post("/api/auth/forgot", { identifier: username });
+      await post("api/auth/forgot", { identifier: username });
       message("Hvis brugeren findes og har en e-mailadresse, er der nu sendt et link. Tjek også spam-mappen.", true);
       return;
     }
     if (mode === "reset") {
-      await post("/api/auth/reset", { token, password });
+      await post("api/auth/reset", { token, password });
       message("Adgangskoden er skiftet. Du kan nu logge ind.", true);
-      setTimeout(() => location.replace("/login"), 1800);
+      setTimeout(() => location.replace("login"), 1800);
       return;
     }
-    await post(mode === "setup" ? "/api/auth/setup" : "/api/auth/login", { username, password, remember });
-    location.replace("/");
+    await post(mode === "setup" ? "api/auth/setup" : "api/auth/login", { username, password, remember });
+    location.replace("./");
   } catch (error) {
     console.error("HCH5 Control authentication failed", error);
     message(error instanceof TypeError ? networkMessage() : error.message);

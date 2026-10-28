@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { postJson } from "../lib/api";
+import { appUrl, postJson } from "../lib/api";
 import type { Lang } from "../lib/i18n";
 import { ROLE_NAMES, useSession } from "../lib/session";
 
@@ -36,7 +36,7 @@ export function AccountPanel({ lang }: { lang: Lang }) {
       setCurrent(""); setPassword(""); setConfirm("");
       if ((password || renamed) && auth.enabled !== false) {
         setNotice(tr("Gemt. Log ind igen med de nye oplysninger.", "Saved. Sign in again with the new details."));
-        window.setTimeout(() => { window.location.href = "/login"; }, 1500);
+        window.setTimeout(() => { window.location.href = appUrl("/login"); }, 1500);
         return;
       }
       setNotice(tr("Din konto er gemt.", "Your account has been saved."));
