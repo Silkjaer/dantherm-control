@@ -20,7 +20,6 @@ import re
 import secrets
 import threading
 import time
-from http.cookies import SimpleCookie
 from pathlib import Path
 
 SHORT_SESSION_SECONDS = 12 * 60 * 60
@@ -35,6 +34,21 @@ USERNAME_RE = re.compile(r"^[A-Za-z0-9._@-]{3,64}$")
 
 def _normal(username):
     return str(username or "").strip().lower()
+
+
+def _session_id(header):
+    """Return the dantherm_session value from a Cookie header, or None.
+
+    SimpleCookie stops parsing at the first value it considers illegal (JSON,
+    spaces, stray quotes). Browsers send every cookie for the host whatever
+    the port, so another web app on the same host could hide our session and
+    log the user out on every request. Each pair is therefore read on its own.
+    """
+    for part in str(header or "").split(";"):
+        name, sep, value = part.strip().partition("=")
+        if sep and name == "dantherm_session":
+            return value.strip().strip('"') or None
+    return None
 
 
 class AuthManager:
@@ -433,12 +447,10 @@ class AuthManager:
         if not data.get("enabled", True):
             admin = next((u for u in data["users"] if u.get("role") == "admin"), data["users"][0])
             return {"username": admin.get("username"), "csrf": None, "role": "admin"}
-        try:
-            cookie = SimpleCookie(header)
-            sid = cookie["dantherm_session"].value
-            session = self.sessions.get(sid)
-        except (KeyError, AttributeError):
+        sid = _session_id(header)
+        if sid is None:
             return None
+        session = self.sessions.get(sid)
         if not session or session["expires"] < time.time():
             self.sessions.pop(sid, None)
             self._save_sessions()
@@ -457,9 +469,7 @@ class AuthManager:
         return session
 
     def logout(self, header):
-        try:
-            cookie = SimpleCookie(header)
-            self.sessions.pop(cookie["dantherm_session"].value, None)
+        sid = _session_id(header)
+        if sid is not None:
+            self.sessions.pop(sid, None)
             self._save_sessions()
-        except (KeyError, AttributeError):
-            pass
