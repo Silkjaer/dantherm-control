@@ -729,7 +729,7 @@ class Gateway:
                 write_fan_pair=lambda extract, supply: self.queue_controller_hardware("fan_pair", (extract, supply)),
                 set_bypass=lambda value: self.queue_controller_hardware("bypass", str(value)),
                 set_fireplace=lambda enabled: self.queue_controller_hardware("fireplace", bool(enabled)),
-                set_afterheat_setpoint=lambda value: self.queue_controller_hardware("afterheat_setpoint", value),
+                set_afterheat_setpoint=self.controller_afterheat_setpoint,
                 set_standby=lambda enabled: self.queue_controller_hardware("standby", bool(enabled)),
             ),
             state_path=controller_cfg.get("state_file", "/var/lib/dantherm-hch5-ha/controller.json"),
@@ -745,6 +745,17 @@ class Gateway:
             password = os.getenv("MQTT_PASS") or config["mqtt"].get("password")
             self.client.username_pw_set(user, password)
         self.client.will_set(f"{self.prefix}/availability", "offline", retain=True)
+
+    def controller_afterheat_setpoint(self, value: int | None):
+        """The controller engine's afterheat binding.
+
+        The engine refreshes the setpoint every few seconds. Without HAC1
+        there is nothing to set, so this is a no-op instead of an error the
+        runtime would log as a failed controller write.
+        """
+        if self.hac1_presence().absent:
+            return None
+        return self.queue_controller_hardware("afterheat_setpoint", value)
 
     def queue_controller_hardware(self, action: str, value: object):
         """Serialize controller writes onto the gateway's sole RS485 thread."""
@@ -1831,6 +1842,11 @@ class Gateway:
         try:
             self.write_afterheat_temperature_block(ser)
         except Exception as error:
+            # Until HAC1 has answered once, a failed refresh is how a missing
+            # module shows itself at start-up, not a fault.
+            if self.hac1_presence().state != Hac1Presence.PRESENT:
+                LOG.debug("Afterheat temperature refresh skipped: %s", error)
+                return False
             now_log = time.monotonic()
             if now_log - getattr(self, "last_afterheat_refresh_error_log", -1e9) >= 900:
                 LOG.error("Afterheat temperature refresh failed: %s", error)
