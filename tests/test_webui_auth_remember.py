@@ -35,3 +35,31 @@ def test_short_session_is_not_persisted():
 
         restarted = AuthManager(auth_path)
         assert restarted.authenticate_cookie(f"dantherm_session={sid}") is None
+
+
+def test_concurrent_requests_with_a_stale_cookie_do_not_fail():
+    # The WebUI is a ThreadingHTTPServer: a browser loading a page with an
+    # expired cookie makes several requests at once, and each one drops the
+    # stale session and rewrites the remembered-session file.
+    import threading
+
+    with tempfile.TemporaryDirectory() as tmp:
+        auth = AuthManager(Path(tmp) / "auth.json")
+        auth.save("admin", "long-test-password", True)
+        auth.session("admin", remember=True)
+        errors = []
+
+        def request():
+            try:
+                for _ in range(200):
+                    auth.authenticate_cookie("dantherm_session=expired")
+            except Exception as error:  # noqa: BLE001 - collected for the assert
+                errors.append(error)
+
+        threads = [threading.Thread(target=request) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert errors == []
+        assert not list(Path(tmp).glob("*.tmp"))
