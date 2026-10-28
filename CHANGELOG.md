@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- **Fewer false "afterheat calls but the air does not get warmer" warnings:** the alarm is no longer raised while the air after the coil is already within 1 K of the afterheat setpoint (HAC1 keeps its call flag on in its duty cycle, so no lift is wanted or possible then). Real faults with cold air still raise it after 30 minutes.
+- Changes by Claude AI.
+
 ## 1.6.0
 
 - **HCH5 MKII (beta):** HCH5 Control can now run an HCH5 MKII. Set `unit: generation: mk2` and the Pi polls the unit over Modbus (the Pi's RS485 adapter or Modbus TCP) instead of listening to an MK1 bus. Smart Auto, rooms, the week planner, holidays, quick boost and the WebUI work as on an MK1; fan steps become the unit's steps 1–4, OFF step 0, fireplace and manual bypass use the unit's own modes. The afterheat card is hidden on an MKII.

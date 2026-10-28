@@ -244,6 +244,18 @@ class Diagnostics:
         # Alarm conditions, raised after their delay.
         roles = s.get("onewire_sensors") or []
         missing = any(isinstance(x, dict) and x.get("role") not in (None, "none") and x.get("temperature") is None for x in roles)
+        # HAC1 keeps its call flag on while the air already is at the setpoint: no lift is wanted then.
+        ah_setpoint = _num(s.get("afterheat_effective_setpoint"))
+        if ah_setpoint is None:
+            ah_setpoint = _num(s.get("actual_afterheat_setpoint"))
+        ah_before = _num(s.get("corrected_t2_temperature"))
+        if ah_before is None:
+            ah_before = _num(s.get("actual_supply_before_heater_temperature"))
+        ah_lift = _num(s.get("afterheat_lift"))
+        afterheat_target_reached = (
+            ah_setpoint is not None and ah_before is not None and ah_lift is not None
+            and ah_before + ah_lift >= ah_setpoint - 1.0
+        )
         conditions = {
             "frost_risk": frost_state == "risk",
             "recovery_low": cold and supply_recovery is not None and supply_recovery < 60,
@@ -254,7 +266,8 @@ class Diagnostics:
                 and (t2 - t1) < 0.25 * (t3 - t1),
             "afterheat_no_lift": s.get("actual_afterheat") is True
                 and s.get("actual_afterheat_outdoor_lockout") is not True
-                and _num(s.get("afterheat_lift")) is not None and _num(s.get("afterheat_lift")) < 0.5,
+                and _num(s.get("afterheat_lift")) is not None and _num(s.get("afterheat_lift")) < 0.5
+                and not afterheat_target_reached,
             "sensor_missing": missing,
             "bus_unhealthy": s.get("rs485_healthy") is False,
             "filter_clogging": filter_change is not None and not learning

@@ -50,6 +50,22 @@ class DiagnosticsTest(unittest.TestCase):
         r = d.update(winter(outdoor_temperature=18.0, supply_recovery_percent=10.0), T0 + 7200)
         self.assertEqual(r["diagnostics_alarm_count"], 0)
 
+    def test_afterheat_no_lift_ignores_air_already_at_setpoint(self):
+        d = Diagnostics()
+        s = winter(actual_afterheat=True, afterheat_lift=-0.02, corrected_t2_temperature=25.8,
+                   actual_afterheat_setpoint=20)
+        d.update(s, T0)
+        r = d.update(s, T0 + 1900)
+        self.assertNotIn("afterheat_no_lift", {a["code"] for a in r["diagnostics_alarms"]})
+
+    def test_afterheat_no_lift_raised_when_air_stays_cold(self):
+        d = Diagnostics()
+        s = winter(actual_afterheat=True, afterheat_lift=0.1, corrected_t2_temperature=14.0,
+                   actual_afterheat_setpoint=20)
+        d.update(s, T0)
+        r = d.update(s, T0 + 1900)
+        self.assertIn("afterheat_no_lift", {a["code"] for a in r["diagnostics_alarms"]})
+
     def test_bypass_not_closing(self):
         d = Diagnostics()
         s = winter(actual_supply_before_heater_temperature=-3.0, actual_bypass_request="off")
