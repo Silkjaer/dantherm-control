@@ -9,6 +9,7 @@ import { useSession, type Permission } from "../lib/session";
 import { AccountPanel } from "../components/AccountPanel";
 import { MailPanel } from "../components/MailPanel";
 import { UsersPanel } from "../components/UsersPanel";
+import { hasAfterheat } from "../lib/afterheat";
 import "../styles/panels.css";import "../styles/management.css";
 
 type Data = Record<string, unknown>;
@@ -85,6 +86,10 @@ const SELF_SAVING: SectionId[] = ["ui", "security", "users", "mail"];
 export function sectionAllowed(id: SectionId, can: (permission: Permission) => boolean) {
   if (OPEN_SECTIONS.includes(id)) return true;
   return can(SECTION_PERMISSION[id] ?? "configure");
+}
+/** Sections in the menu: those the user may open, minus afterheat on a unit without one. */
+export function visibleSections(can: (permission: Permission) => boolean, unit: Record<string, unknown>) {
+  return SECTIONS.filter(item => sectionAllowed(item.id, can) && (item.id !== "afterheat" || hasAfterheat(unit)));
 }
 
 function Card({ title, lead, icon: Icon, children }: { title: string; lead?: string; icon?: LucideIcon; children: ReactNode }) {
@@ -174,6 +179,7 @@ export function SettingsPage() {
   const { can } = useSession();
   const t = (text: Text) => text[lang];
   const [controller, setController] = useState<Data>({});
+  const [unit, setUnit] = useState<Data>({});
   const [auth, setAuth] = useState<Auth>({});
   const [csrf, setCsrf] = useState("");
   const [form, setForm] = useState<Data>({});
@@ -188,6 +194,8 @@ export function SettingsPage() {
   const [sixEdits, setSixEdits] = useState<Record<string, { extract?: number; supply?: number }>>({});
 
   const refresh = useCallback(async () => {
+    // The live unit state only decides which sections exist; without it, show them all.
+    void requestJson<Data>("/state.json").then(setUnit, () => undefined);
     const [c, a] = await Promise.all([requestJson<Data>("/api/controller/state?compact=1"), requestJson<Auth>("/api/auth/status")]);
     setController(c); setForm(c); setAuth(a); setCsrf(a.csrf ?? "");
   }, []);
@@ -617,7 +625,7 @@ export function SettingsPage() {
     </Card>,
   };
 
-  const visible = SECTIONS.filter(item => sectionAllowed(item.id, can));
+  const visible = visibleSections(can, unit);
   const active = visible.find(item => item.id === section) ?? visible[0];
   return <section className="dashboard-overview page-enter">
     <header className="overview-heading-row"><div><span className="eyebrow">{t(T.eyebrow)}</span><h1>{t(T.title)}</h1><p>{t(T.intro)}</p></div></header>
