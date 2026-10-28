@@ -18,6 +18,7 @@ import json
 import os
 import re
 import secrets
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -49,6 +50,27 @@ def _session_id(header):
         if sep and name == "dantherm_session":
             return value.strip().strip('"') or None
     return None
+
+
+def _write_private(path, text):
+    """Atomically replace ``path`` with ``text``, readable by the owner only.
+
+    The WebUI serves requests on several threads, so the temporary file gets
+    a unique name: a shared ``.tmp`` name let one thread rename the file away
+    while another was still writing or chmod'ing it.
+    """
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class AuthManager:
@@ -93,10 +115,7 @@ class AuthManager:
     def _write(self, data):
         data = {"version": 2, "enabled": bool(data.get("enabled", True)), "users": data["users"]}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data))
-        os.chmod(tmp, 0o600)
-        tmp.replace(self.path)
+        _write_private(self.path, json.dumps(data))
 
     def configured(self):
         return bool(self.load())
@@ -391,23 +410,21 @@ class AuthManager:
             }
 
     def _save_sessions(self):
-        self.session_path.parent.mkdir(parents=True, exist_ok=True)
-        now = time.time()
-        remembered = {
-            sid: session
-            for sid, session in self.sessions.items()
-            if session.get("remember") and float(session.get("expires", 0)) > now
-        }
-        if not remembered:
-            try:
-                self.session_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return
-        tmp = self.session_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(remembered, separators=(",", ":")))
-        os.chmod(tmp, 0o600)
-        tmp.replace(self.session_path)
+        with self.lock:
+            self.session_path.parent.mkdir(parents=True, exist_ok=True)
+            now = time.time()
+            remembered = {
+                sid: session
+                for sid, session in list(self.sessions.items())
+                if session.get("remember") and float(session.get("expires", 0)) > now
+            }
+            if not remembered:
+                try:
+                    self.session_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return
+            _write_private(self.session_path, json.dumps(remembered, separators=(",", ":")))
 
     def drop_sessions(self, username):
         wanted = _normal(username)
