@@ -12,6 +12,9 @@ ALLOW is a comma-separated list, empty by default (read-only):
   write:SLAVE:REG/REG  FC06 single-register writes to those registers only,
                        for example write:1:66/67/68/76
 FC16 block writes and anything unparseable are always dropped.
+
+TX_LOG_READS=0 leaves forwarded reads out of TX_LOG, which keeps it small on a
+long-running install; writes and everything dropped are always logged.
 """
 import os
 import select
@@ -23,6 +26,7 @@ UPSTREAM = os.environ.get("UPSTREAM", "192.168.1.200:4196")
 LISTEN = os.environ.get("LISTEN", "0.0.0.0:4300")
 ALLOW = os.environ.get("ALLOW", "")
 TX_LOG = os.environ.get("TX_LOG", "/logs/proxy-tx.log")
+TX_LOG_READS = os.environ.get("TX_LOG_READS", "1") != "0"
 
 
 def addr(text):
@@ -177,6 +181,8 @@ def main():
                             forward, reason = False, f"upstream send failed: {error}"
                     sent += len(frame) if forward else 0
                     dropped += 0 if forward else len(frame)
+                    if forward and reason == "read" and not TX_LOG_READS:
+                        continue
                     tx_log.write(f"{stamp} {peer} {'SENT' if forward else 'DROPPED'} {frame.hex(' ')} ({reason})\n")
         if time.time() - last_stat >= 60:
             log(f"bus->clients {rx} bytes; clients->bus sent {sent}, dropped {dropped} bytes; {len(clients)} client(s)")
