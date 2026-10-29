@@ -749,11 +749,12 @@ class Gateway:
     def controller_afterheat_setpoint(self, value: int | None):
         """The controller engine's afterheat binding.
 
-        The engine refreshes the setpoint every few seconds. Without HAC1
-        there is nothing to set, so this is a no-op instead of an error the
-        runtime would log as a failed controller write.
+        The engine refreshes the setpoint every few seconds. Until HAC1 has
+        answered there is nothing to set, so this is a no-op instead of a
+        write to a module that may not exist, or an error the runtime would
+        log as a failed controller write.
         """
-        if self.hac1_presence().absent:
+        if not self.hac1_presence().present:
             return None
         return self.queue_controller_hardware("afterheat_setpoint", value)
 
@@ -810,7 +811,9 @@ class Gateway:
             except Exception as error:
                 # A missing HAC1 ack is routine and retried; the controller
                 # runtime logs it rate-limited, so no traceback per attempt.
-                if "missing FC16 acknowledgement" in str(error) or "HAC1 not installed" in str(error):
+                if any(text in str(error) for text in (
+                    "missing FC16 acknowledgement", "HAC1 not installed", "HAC1 not detected yet",
+                )):
                     LOG.debug("Controller hardware action failed: %s: %s", action, error)
                 else:
                     LOG.exception("Controller hardware action failed: %s", action)
@@ -1836,7 +1839,7 @@ class Gateway:
             return False
         if not self.controller.hardware_writes_allowed():
             return False
-        if self.hac1_presence().absent:
+        if not self.hac1_presence().present:
             return False
         self.last_afterheat_temperature_refresh = now
         try:
@@ -1897,8 +1900,12 @@ class Gateway:
         """
         if value is not None and not 10 <= value <= 35:
             raise ValueError("afterheat setpoint must be 10..35 C or OFF")
-        if self.hac1_presence().absent:
+        presence = self.hac1_presence()
+        if presence.absent:
             raise RuntimeError("HAC1 not installed")
+        if not presence.present:
+            # Only a module that has answered is written to.
+            raise RuntimeError("HAC1 not detected yet")
         command = [1, 0 if value is None else value * 256, 15, 0x17FE, 0xFF03]
         self._write_afterheat_block(
             ser, 185, command, "CONTROL_AFTERHEAT_THERMOSTAT"
