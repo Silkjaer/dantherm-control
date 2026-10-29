@@ -188,3 +188,18 @@ def test_foreign_fc16_write_still_detected():
     arb.evaluate(bus_healthy=True, now=t0 + 3.1)
     assert arb.observe_frame(fc16_request(0x40, 185, [1, 21 * 256, 15, 0x17FE, 0xFF03]), now=t0 + 4) == "foreign"
     assert arb.master == arb.HCP4
+
+
+def test_stream_parser_reassembles_exception_and_fc16_frames():
+    body = bytes([0x40, 0x83, 2])
+    exception = body + crc16(body).to_bytes(2, "little")
+    request = fc16_request(0x40, 185, [1, 21 * 256, 15, 0x17FE, 0xFF03])
+    ack = fc16_ack(0x40, 185, 5)
+    data = exception + request + ack
+    stream = RtuFrameStream()
+    frames = []
+    for index in range(0, len(data), 4):
+        frames += stream.feed(data[index:index + 4])
+    assert frames == [exception, request, ack]
+    # An exception is a slave answering, not a foreign master.
+    assert MasterArbitrator().observe_frame(exception) == "read_or_response"

@@ -78,7 +78,6 @@ INFO_STATE_KEYS = {
     "filter_status",
     "filter_alarm",
 }
-KNOWN_SLAVES = {1, 0x40}
 # FC04 register 7 is the damper's status, not its position (captured on the
 # live HCH5 2026-09-23): 0 closed, 64 opening, 32 closing, 255 open. The unit
 # runs the damper for a fixed ~180 s in either direction.
@@ -545,11 +544,16 @@ class DashboardHttpServer:
 
 class RtuSniffer:
     def __init__(self, port: str, baudrate: int, parity: str, deduplicate_ms: int):
+        from master_arbitration import RtuFrameStream
+
         self.port = port
         self.baudrate = baudrate
         self.parity = parity
         self.dedupe_s = deduplicate_ms / 1000.0
-        self.buffer = bytearray()
+        # Shared with master arbitration. It keeps a frame that has only
+        # partly arrived until the rest does, and also knows FC16 requests
+        # and exception responses.
+        self.stream = RtuFrameStream()
         self.last_seen: dict[bytes, float] = {}
 
     def open(self) -> serial.Serial:
@@ -571,47 +575,18 @@ class RtuSniffer:
         return ser
 
     def feed(self, data: bytes):
-        self.buffer.extend(data)
-        offset = 0
-        while offset + 5 <= len(self.buffer):
-            if self.buffer[offset] not in KNOWN_SLAVES:
-                offset += 1
-                continue
-            fn = self.buffer[offset + 1]
-            lengths: list[int] = []
-            if fn in (3, 4):
-                lengths.append(8)  # request
-                byte_count = self.buffer[offset + 2]
-                if byte_count and byte_count <= 250 and byte_count % 2 == 0:
-                    lengths.insert(0, 5 + byte_count)  # response
-            elif fn in (6, 16):
-                lengths.append(8)
-            else:
-                offset += 1
-                continue
-
-            frame = None
-            for length in lengths:
-                if offset + length > len(self.buffer):
-                    continue
-                candidate = bytes(self.buffer[offset : offset + length])
-                if crc16(candidate[:-2]) == int.from_bytes(candidate[-2:], "little"):
-                    frame = candidate
-                    break
-            if frame is None:
-                offset += 1
-                continue
-            offset += len(frame)
+        for frame in self.stream.feed(data):
             now = time.monotonic()
+            if len(self.last_seen) >= 1024:
+                # Every new reading is a new frame. Only those seen within
+                # the window can still suppress a repeat; forget the rest.
+                self.last_seen = {
+                    seen: at for seen, at in self.last_seen.items() if now - at < self.dedupe_s
+                }
             previous = self.last_seen.get(frame, 0.0)
             self.last_seen[frame] = now
             if now - previous >= self.dedupe_s:
                 yield frame
-
-        if offset:
-            del self.buffer[:offset]
-        if len(self.buffer) > 1024:
-            del self.buffer[:-16]
 
 
 class Gateway:
@@ -1429,10 +1404,13 @@ class Gateway:
                             key, raw / 100.0,
                             source="passive_hcp4_hac1_register_180",
                         )
-                self.publish_temperature(
-                    "supply_temperature", values[1] / 100.0,
-                    source="passive_hcp4_hac1_register_181",
-                )
+                # Same range as above: a sensor-fault word such as 0x8000
+                # must not become 327.68 C.
+                if 500 <= values[1] <= 4000:
+                    self.publish_temperature(
+                        "supply_temperature", values[1] / 100.0,
+                        source="passive_hcp4_hac1_register_181",
+                    )
             elif register == 185 and count == 5 and byte_count == 10:
                 values = [
                     int.from_bytes(frame[index:index + 2], "big")
