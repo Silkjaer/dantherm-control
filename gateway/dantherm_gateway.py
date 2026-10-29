@@ -2616,6 +2616,8 @@ class Gateway:
         last_poll = time.monotonic()
         try:
             while self.running:
+                # Read by /healthz: the loop is still running.
+                self.state["bus_loop_monotonic"] = time.monotonic()
                 if self.controller_reload_requested:
                     self.controller_reload_requested = False
                     with self.controller.config.lock:
@@ -2699,6 +2701,8 @@ class Gateway:
                 if self.control_enabled:
                     self.resume_fireplace(ser)
                 while self.running:
+                    # Read by /healthz: the loop is still running.
+                    self.state["bus_loop_monotonic"] = time.monotonic()
                     if self.controller_reload_requested:
                         self.controller_reload_requested = False
                         with self.controller.config.lock:

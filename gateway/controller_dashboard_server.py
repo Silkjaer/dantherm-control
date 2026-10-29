@@ -44,6 +44,10 @@ COMPRESSIBLE_TYPES = ("application/json", "text/", "image/svg+xml")
 # Left out of /api/controller/state?compact=1. The History page and the
 # legacy controller page ask for the full answer.
 COMPACT_OMITTED_KEYS = ("decision_log", "change_log")
+# /healthz: the bus loop and the controller must have run this recently.
+# Right after start-up neither has run yet, so they get some time first.
+HEALTH_MAX_AGE_SECONDS = 90.0
+HEALTH_STARTUP_SECONDS = 180.0
 
 
 class ControllerDashboardHttpServer(DashboardHttpServer):
@@ -63,6 +67,7 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
         # Contact from Home Assistant (any request with the right API key) and
         # requests with a wrong key, e.g. after a new key was generated.
         self.started_at = time.time()
+        self.started_monotonic = time.monotonic()
         # Address of Home Assistant's ingress proxy (172.30.32.2 in a Home
         # Assistant app). Requests from it carry the HA user's login, so they
         # are let in as the first administrator; empty disables this.
@@ -71,6 +76,30 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
         self.ha_last_rejected: float | None = None
         self.ha_rejected_ip: str | None = None
         self.alarm_mailer = AlarmMailer(self.mail, lambda: {**controller_runtime.snapshot(), **self.ha_link()}, events=self.events)
+
+    def health(self) -> tuple[bool, dict[str, object]]:
+        """Whether the bus loop and the controller still run, for a watchdog.
+
+        A silent bus is not a failure here: the gateway handles that itself,
+        and a restart would not bring the bus back.
+        """
+        now = time.monotonic()
+        starting = now - self.started_monotonic < HEALTH_STARTUP_SECONDS
+        loop_at = self.state.get("bus_loop_monotonic")
+        loop_age = now - loop_at if isinstance(loop_at, (int, float)) else None
+        tick_at = getattr(self.controller_runtime, "last_tick_at", None)
+        tick_age = time.time() - tick_at if isinstance(tick_at, (int, float)) else None
+        thread = getattr(self.controller_runtime, "thread", None)
+        loop_ok = loop_age <= HEALTH_MAX_AGE_SECONDS if loop_age is not None else starting
+        control_ok = (
+            tick_age <= HEALTH_MAX_AGE_SECONDS if tick_age is not None else starting
+        ) and (thread is None or thread.is_alive())
+        return loop_ok and control_ok, {
+            "ok": loop_ok and control_ok,
+            "bus_loop_age_seconds": None if loop_age is None else round(loop_age, 1),
+            "controller_tick_age_seconds": None if tick_age is None else round(tick_age, 1),
+            "bus_traffic": self.state.get("bus_traffic"),
+        }
 
     def ha_link(self, now: float | None = None) -> dict:
         """Whether Home Assistant is talking to the controller API right now."""
@@ -231,6 +260,14 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
 
             def do_GET(self):
                 parsed = urlparse(self.path)
+                if parsed.path == "/healthz":
+                    ok, health = dashboard.health()
+                    body = json.dumps(health, separators=(",", ":")).encode()
+                    self.send_response(200 if ok else 503)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers(); self.wfile.write(body)
+                    return
                 if parsed.path == "/api/controller/state" and self._machine_auth():
                     self._json(self._controller_state(dashboard.controller_runtime.snapshot(), parsed))
                     return

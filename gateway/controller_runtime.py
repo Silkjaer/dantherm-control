@@ -1264,9 +1264,12 @@ class ControllerRuntime:
     def _run(self) -> None:
         LOG.info("Local HCH controller runtime started (automatic master=%s)", self.master.master)
         while not self.stop_event.is_set():
-            self.tick()
-            if time.time() - self.diagnostics_at >= 10:
-                self.update_diagnostics()
+            try:
+                self.tick()
+                if time.time() - self.diagnostics_at >= 10:
+                    self.update_diagnostics()
+            except Exception:  # one failed tick must not end the controller thread
+                LOG.exception("Controller tick failed")
             self.stop_event.wait(self.tick_seconds)
         self.diagnostics.save()
 
