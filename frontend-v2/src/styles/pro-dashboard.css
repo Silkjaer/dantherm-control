@@ -256,6 +256,7 @@ body[data-sidebar="collapsed"] .app-shell { grid-template-columns: 78px minmax(0
 .readback-icon.damper.active::before { color: #63df9f; }
 .readback-icon.heater::before { content: "≋"; position: absolute; inset: 0; display: grid; place-items: center; color: #7893a3; font-size: 24px; transform: rotate(90deg); }
 .readback-icon.heater.active::before { color: #ffae5c; text-shadow: 0 0 10px #ff8b3d; }
+.readback-icon.room::before { content: "°C"; position: absolute; inset: 0; display: grid; place-items: center; color: #9bb4c2; font-size: 13px; font-weight: 800; }
 
 .pro-control-column { grid-area: controls; min-width: 0; display: grid; gap: 10px; }
 .pro-control-card { padding: 15px; border-radius: 13px; }
