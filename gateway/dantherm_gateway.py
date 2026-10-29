@@ -36,7 +36,12 @@ from controller_dashboard_server import ControllerDashboardHttpServer
 from controller_runtime import ControllerRuntime
 from hac1_presence import HAC1_SLAVE, Hac1Presence
 from passivelink_parser import temperature_value
-from sensor_freshness import SENSOR_SAMPLE_TIMESTAMPS, fresh_sensor_value
+from sensor_freshness import (
+    CONTROL_INPUT_KEYS,
+    SENSOR_SAMPLE_TIMESTAMPS,
+    control_input_stamp_key,
+    fresh_sensor_value,
+)
 
 LOG = logging.getLogger("dantherm_gateway")
 
@@ -1262,6 +1267,8 @@ class Gateway:
         return str(value)
 
     def publish(self, key: str, value: object, *, source: str | None = None):
+        if key in CONTROL_INPUT_KEYS and value is not None:
+            self.state[control_input_stamp_key(key)] = time.monotonic()
         if self.state.get(key) == value:
             return
         self.state[key] = value

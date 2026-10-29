@@ -5,6 +5,15 @@ import time
 
 SENSOR_FRESHNESS_SECONDS = 45.0
 
+# Inputs the controller decides on. Gateway.publish stamps them on every
+# reading, also an unchanged one, whichever bus path delivered it, so a
+# reading that stops arriving expires instead of steering the unit.
+CONTROL_INPUT_KEYS = frozenset({
+    "outdoor_temp", "outdoor_temperature", "extract_temp", "extract_temperature",
+    "humidity", "relative_humidity", "co2",
+})
+CONTROL_INPUT_MAX_AGE_SECONDS = 120.0
+
 SENSOR_SAMPLE_TIMESTAMPS = {
     "supply_temp": ("supply_temperature_sample_monotonic",),
     "supply_temperature": ("supply_temperature_sample_monotonic",),
@@ -34,6 +43,25 @@ def fresh_sensor_value(
     value = state.get(field)
     age = sensor_sample_age(state, field, now=now)
     return value if value is not None and age is not None and age <= SENSOR_FRESHNESS_SECONDS else None
+
+
+def control_input_stamp_key(field: str) -> str:
+    return f"{field}_seen_monotonic"
+
+
+def fresh_control_input(
+    state: dict[str, object], field: str, *, now: float | None = None
+) -> object | None:
+    """The value, or None once it has not been read for too long.
+
+    A value without a stamp was not set by Gateway.publish and is returned as is.
+    """
+    value = state.get(field)
+    seen = state.get(control_input_stamp_key(field))
+    if value is None or not isinstance(seen, (int, float)) or isinstance(seen, bool):
+        return value
+    now = time.monotonic() if now is None else now
+    return value if now - float(seen) <= CONTROL_INPUT_MAX_AGE_SECONDS else None
 
 
 def hide_stale_sensor_values(
