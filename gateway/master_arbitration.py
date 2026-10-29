@@ -58,7 +58,13 @@ def read_request_signature(frame: bytes):
 
 
 class RtuFrameStream:
-    """Small RTU stream parser used only for master detection."""
+    """Small RTU stream parser for master detection and the gateway sniffer.
+
+    A frame that has started but is not complete stays in the buffer until
+    the rest arrives, so frames split across reads (TCP delivers arbitrary
+    chunks) are reassembled. A start whose CRC fails is dropped one byte at a
+    time until the stream is in step again.
+    """
 
     def __init__(self):
         self.buffer = bytearray()
@@ -83,6 +89,9 @@ class RtuFrameStream:
                 if byte_count == count * 2 and 0 < byte_count <= 246:
                     lengths.append(9 + byte_count)
             lengths.append(8)
+        elif fn & 0x80 and (fn & 0x7F) in (3, 4, 6, 16):
+            # Exception response: slave, function | 0x80, code, CRC.
+            lengths.append(5)
         return lengths
 
     def feed(self, data: bytes) -> list[bytes]:
