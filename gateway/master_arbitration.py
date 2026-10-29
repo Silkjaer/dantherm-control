@@ -69,6 +69,10 @@ class RtuFrameStream:
     def __init__(self):
         self.buffer = bytearray()
 
+    def reset(self) -> None:
+        """Forget a partial frame, e.g. one left from an earlier connection."""
+        self.buffer.clear()
+
     @staticmethod
     def _candidates(buffer: bytearray) -> list[int]:
         if len(buffer) < 5:
@@ -183,6 +187,21 @@ class MasterArbitrator:
             )
         if "detection_min_foreign_writes" in cfg:
             self.detection_min_foreign_writes = max(1, int(cfg["detection_min_foreign_writes"]))
+
+    def restart_observation(self, now: float | None = None) -> None:
+        """Listen for the full start-up window again, from ``now``.
+
+        Called when the RS485 transport has been opened: the window must not
+        run out while nothing can be heard yet. Own frames still waiting for
+        their echo belonged to the earlier connection. Foreign activity is
+        kept, so a recently active HCP4 still holds Pi back.
+        """
+        now = time.monotonic() if now is None else float(now)
+        self.started_monotonic = now
+        self.pending_own.clear()
+        self._last_foreign_signature = None
+        self._last_foreign_signature_at = 0.0
+        self._transition(self.UNKNOWN, "startup_observation", now)
 
     def _transition(self, master: str, reason: str, now: float) -> bool:
         if master == self.master:

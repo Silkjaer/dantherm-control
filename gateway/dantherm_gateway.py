@@ -1718,6 +1718,18 @@ class Gateway:
             self.direction_capture.record_tx(data[:written], reason)
         return written
 
+    def transport_opened(self) -> None:
+        """Start master arbitration afresh once the RS485 port is open.
+
+        The arbitrator is created with the gateway, before MQTT and the port
+        are up, and a TCP connect to an RS485-to-Ethernet adapter can take
+        seconds. Its listen-only start-up window must not run out while
+        nothing can be heard, and no bytes or own-echo state from before
+        belong to the new connection.
+        """
+        self.controller.master_stream.reset()
+        self.controller.master.restart_observation()
+
     def wait_quiet(self, ser: serial.Serial, seconds: float = 0.015) -> bool:
         deadline = time.monotonic() + 0.3
         quiet_since = time.monotonic()
@@ -2687,6 +2699,7 @@ class Gateway:
             self.publish("fireplace_remaining", 0)
         with sniffer.open() as ser:
             self.reader_started_at = time.monotonic()
+            self.transport_opened()
             LOG.info("Aflæsning startet på %s", serial_cfg["port"])
             self.controller.start()
             try:
