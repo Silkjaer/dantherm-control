@@ -132,6 +132,10 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
 
             def _session(self):
                 session = dashboard.auth.authenticate_cookie(self.headers.get("Cookie", ""))
+                if session is not None and session.get("ingress") and not self._from_ingress_proxy():
+                    # An ingress login only counts through the ingress proxy, so
+                    # a copied cookie is no use on the app's own port.
+                    session = None
                 if session is None and self._from_ingress_proxy():
                     session = self._ingress_session()
                 return session
@@ -149,6 +153,7 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
                     if admin is None:
                         return None
                     sid, _csrf = dashboard.auth.session(admin)
+                    dashboard.auth.sessions[sid]["ingress"] = True
                     self._ingress_sid = sid
                 return dashboard.auth.sessions.get(sid)
 
@@ -157,7 +162,16 @@ class ControllerDashboardHttpServer(DashboardHttpServer):
                 if sid is not None and not getattr(self, "_ingress_cookie_sent", False):
                     self._ingress_cookie_sent = True
                     max_age = dashboard.auth.session_max_age(sid)
-                    self.send_header("Set-Cookie", f"dantherm_session={sid}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}")
+                    # Only this app's ingress path gets the cookie; at Path=/
+                    # the browser would send it to every app on the host.
+                    self.send_header(
+                        "Set-Cookie",
+                        f"dantherm_session={sid}; Path={self._ingress_path()}; HttpOnly; SameSite=Strict; Max-Age={max_age}",
+                    )
+                    if "dantherm_session=" in self.headers.get("Cookie", ""):
+                        # The cookie sent did not log in, so it may be one an
+                        # older version left at Path=/; remove that one.
+                        self.send_header("Set-Cookie", "dantherm_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
                 super().end_headers()
 
             def _require_auth(self):

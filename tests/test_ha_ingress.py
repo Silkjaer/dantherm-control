@@ -57,6 +57,30 @@ class HomeAssistantIngressTests(unittest.TestCase):
         self.assertEqual(state["username"], "admin")
         self.assertTrue(state["csrf"])
 
+    def test_the_ingress_cookie_is_limited_to_the_ingress_path(self):
+        self.server.ingress_proxy = "127.0.0.1"
+        page, _ = self.get("/", {"X-Ingress-Path": INGRESS})
+        self.assertIn(f"Path={INGRESS};", page.getheader("Set-Cookie"))
+        self.assertNotIn("Path=/;", page.getheader("Set-Cookie"))
+
+    def test_an_ingress_cookie_does_not_log_in_on_the_apps_own_port(self):
+        self.server.ingress_proxy = "127.0.0.1"
+        page, _ = self.get("/", {"X-Ingress-Path": INGRESS})
+        cookie = page.getheader("Set-Cookie").split(";")[0]
+        status, body = self.get("/api/auth/status", {"Cookie": cookie})
+        self.assertFalse(json.loads(body).get("authenticated"))
+        page, _ = self.get("/", {"Cookie": cookie})
+        self.assertEqual(page.status, 302)
+
+    def test_an_old_cookie_at_the_root_path_is_removed(self):
+        self.server.ingress_proxy = "127.0.0.1"
+        page, _ = self.get("/", {"X-Ingress-Path": INGRESS, "Cookie": "dantherm_session=gone"})
+        cookies = page.msg.get_all("Set-Cookie")
+        self.assertEqual(len(cookies), 2)
+        self.assertIn(f"Path={INGRESS};", cookies[0])
+        self.assertIn("Path=/;", cookies[1])
+        self.assertIn("Max-Age=0", cookies[1])
+
     def test_the_same_request_without_ingress_still_needs_a_login(self):
         self.server.ingress_proxy = "127.0.0.1"
         page, _ = self.get("/")
