@@ -1713,6 +1713,25 @@ class Gateway:
         self.write_one(ser, 67, supply)
         self.write_one(ser, 66, extract)
 
+    @staticmethod
+    def without_own_echo(received: bytes, frame: bytes) -> bytes:
+        """The bytes after an echo of our own ``frame``, if there is one.
+
+        An adapter or transceiver that hears its own transmission returns the
+        request before the slave answers. A trailing piece of the request
+        that is still arriving is held back as well, so nothing inside our
+        own bytes can be taken for the answer.
+        """
+        index = received.find(frame)
+        if index >= 0:
+            return bytes(received[index + len(frame):])
+        # Up to the six header bytes, an echo and an ack look the same and
+        # neither is accepted yet; from the seventh byte on they differ.
+        for length in range(min(len(received), len(frame) - 1), 6, -1):
+            if received.endswith(frame[:length]):
+                return bytes(received[:-length])
+        return bytes(received)
+
     def _write_afterheat_block(
         self, ser: serial.Serial, start: int, values: list[int], reason: str
     ) -> None:
@@ -1722,24 +1741,26 @@ class Gateway:
             if remaining > 0:
                 time.sleep(remaining)
         frame = self.write_multiple_frame(0x40, start, values)
-        # HAC1 answers ~50 ms later with the standard 8-byte FC16 ack
-        # (40 10 00 B4 00 05 4F 3D). Captures 2026-09-23 showed its last CRC
-        # byte intermittently garbled (4F FF / 4F CF) or missing entirely,
-        # so the six header bytes identify the ack. The ack must be read
-        # immediately: read later, a valid ack falls outside the own-echo
-        # window and master arbitration mistakes it for an HCP4 write and
-        # releases the bus. After the header, one more read collects the
-        # CRC bytes so they are never left in the buffer.
+        # HAC1 answers ~50 ms later with the standard 8-byte FC16 ack: our
+        # first six bytes and their CRC (40 10 00 B4 00 05 4F 3D). The ack
+        # must be read immediately: read later, a valid ack falls outside the
+        # own-echo window and master arbitration mistakes it for an HCP4
+        # write and releases the bus. An echo of our own frame starts with
+        # the same six bytes, so it is skipped, and a whole ack must have a
+        # valid CRC.
         header = frame[:6]
-        # Captured 2026-10-02 (457 writes in 30 min): HAC1 always answered
-        # after ~51 ms, but in ~5 % of the acks the FIRST bytes were garbled
-        # on the line turnaround (10 00 B9.., 40 41 00 B9.., C0 10 00 B9..),
-        # so the strict header match failed, the write was repeated and both
-        # tries could fail. The register, count and first CRC byte of the
-        # proper ack identify it as well. Our own frame continues with the
-        # byte count after register and count, so it never matches (guarded
-        # for the rare CRC byte equal to the byte count).
+        # Captures 2026-09-23 showed the ack's last CRC byte intermittently
+        # garbled (4F FF / 4F CF) or missing entirely. Captured 2026-10-02
+        # (457 writes in 30 min): HAC1 always answered after ~51 ms, but in
+        # ~5 % of the acks the FIRST bytes were garbled on the line
+        # turnaround (10 00 B9.., 40 41 00 B9.., C0 10 00 B9..), the write
+        # was repeated and both tries could fail. The register, count and
+        # first CRC byte of the proper ack identify all of these. Our own
+        # frame continues with the byte count after register and count, so
+        # it never matches (guarded for the rare CRC byte equal to the byte
+        # count).
         crc = crc16(header).to_bytes(2, "little")
+        ack = header + crc
         tail = frame[2:6] + crc[:1] if crc[0] != frame[6] else None
         for _attempt in range(2):
             if not self.wait_quiet(ser):
@@ -1747,15 +1768,13 @@ class Gateway:
             self.serial_write(ser, frame, reason)
             ser.flush()
             deadline = time.monotonic() + 0.5
-            received = bytearray()
-            header_seen = False
+            raw = bytearray()
             while time.monotonic() < deadline:
-                received.extend(self.serial_read(ser, 256))
-                index = received.find(header)
-                if index >= 0 and (header_seen or len(received) >= index + 8):
+                raw.extend(self.serial_read(ser, 256))
+                received = self.without_own_echo(raw, frame)
+                if ack in received:
                     self.last_afterheat_block_at = time.monotonic()
                     return
-                header_seen = index >= 0
                 if tail is not None and tail in received:
                     self.last_afterheat_block_at = time.monotonic()
                     return
