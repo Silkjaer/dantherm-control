@@ -1556,6 +1556,9 @@ class ControllerState:
             return result
 
 
+_KEEP = object()
+
+
 class ControllerEngine:
     """Decision engine, automation overlays, write deduplication and HA fallback."""
 
@@ -1590,14 +1593,16 @@ class ControllerEngine:
         self._failure_counts: dict[str, int] = {}
         self._retry_at: dict[str, float] = {}
 
-    def update_measurements(self, *, rh=None, co2=None, outdoor=None, room=None) -> None:
+    def update_measurements(self, *, rh=_KEEP, co2=_KEEP, outdoor=_KEEP, room=_KEEP) -> None:
+        """Set the given measurements; None (or a value that is not a number) clears one."""
         with self.lock:
             for key, value in (("rh", rh), ("co2", co2), ("outdoor", outdoor), ("room", room)):
-                if value is not None:
-                    try:
-                        self.measurements[key] = float(value)
-                    except (TypeError, ValueError):
-                        pass
+                if value is _KEEP:
+                    continue
+                try:
+                    self.measurements[key] = None if value is None else float(value)
+                except (TypeError, ValueError):
+                    self.measurements[key] = None
 
     def set_external(self, values: dict[str, float | None]) -> None:
         with self.lock:
@@ -1763,7 +1768,9 @@ class ControllerEngine:
                     on_age = now_ts - (self.cooling_last_on_at or now_ts)
                     if keep_ok:
                         self.cooling_reason = "active"
-                    elif on_age < min_on:
+                    elif on_age < min_on and outdoor >= minimum:
+                        # The minimum run time never keeps air below the
+                        # lowest outdoor temperature coming in unrecovered.
                         self.cooling_reason = "minimum_on_hold"
                     else:
                         if outdoor < minimum:

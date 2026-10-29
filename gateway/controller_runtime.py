@@ -23,7 +23,7 @@ from onewire_extras import OneWireExtras
 from diagnostics import Diagnostics
 from controller_core import AFTERHEAT_OUTDOOR_CUTOFF_C, ControllerEngine, ControllerError, ControllerState, HardwareAdapter
 from master_arbitration import MasterArbitrator, RtuFrameStream
-from sensor_freshness import fresh_sensor_value, sensor_sample_age
+from sensor_freshness import fresh_control_input, fresh_sensor_value, sensor_sample_age
 from weather_bridge import humidity_at_t1, validate_weather
 
 # Plausible T5 (HRC2 room sensor) range; anything else means no HRC2.
@@ -120,6 +120,15 @@ class ControllerRuntime:
                 return value
         return None
 
+    @staticmethod
+    def _first_fresh(state: dict[str, object], *keys: str):
+        """Like _first, but a control input that stopped arriving counts as missing."""
+        for key in keys:
+            value = fresh_control_input(state, key)
+            if value is not None:
+                return value
+        return None
+
     def configure_master(self, config: dict | None) -> None:
         self.master.configure(config)
 
@@ -180,16 +189,17 @@ class ControllerRuntime:
         # cut, so only values in a living-room range count.
         room = self._safe_number(room, ROOM_T5_RANGE[0], ROOM_T5_RANGE[1])
         extract_temp = self._safe_number(
-            self._first(state, "extract_temp", "extract_temperature"), -30, 60
+            self._first_fresh(state, "extract_temp", "extract_temperature"), -30, 60
         )
         room_temperature, room_source = self._afterheat_room_temperature(room, extract_temp)
         self.afterheat_room_source_used = room_source if room_temperature is not None else None
         # Free cooling and the afterheat use the same room temperature: by
         # default the HA room average, else the extract air (T3).
+        # Every input is passed, so one that is missing clears the old value.
         self.engine.update_measurements(
-            rh=self._first(state, "humidity", "relative_humidity"),
-            co2=self._first(state, "co2"),
-            outdoor=self._first(state, "outdoor_temp", "outdoor_temperature"),
+            rh=self._first_fresh(state, "humidity", "relative_humidity"),
+            co2=self._first_fresh(state, "co2"),
+            outdoor=self._first_fresh(state, "outdoor_temp", "outdoor_temperature"),
             room=room_temperature,
         )
         self.engine.set_external({
