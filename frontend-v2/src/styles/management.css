@@ -24,6 +24,8 @@
 /* Readable settings: labels, inputs and help text (the page used 8–9 px before). */
 .settings-grid label{font-size:13px}.settings-grid input,.settings-grid select,.settings-table input,.settings-table select,.schedule-toolbar select{font-size:14px}
 .settings-grid input,.settings-grid select{min-height:42px}.settings-grid label>span{font-size:12px}
+/* A field next to one with long help shares its row height: keep the input its own size, leave the space below. */
+.settings-grid label{align-content:start}
 .settings-field-help,.settings-help,.settings-warning{font-size:12.5px}
 .settings-nav button strong{font-size:14px}.settings-nav button small{font-size:12px}
 .settings-summary span{font-size:12px}.settings-summary strong{font-size:14.5px}
