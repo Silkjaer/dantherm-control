@@ -78,6 +78,7 @@ class Mk2Bridge:
         self.last_pair: tuple[int, int] | None = None
         self.standby = False
         self._afterheat_warned = False
+        self.bypass_raw: object = None
 
     def poll(self) -> bool:
         try:
@@ -99,6 +100,7 @@ class Mk2Bridge:
                 self.publish(key, data[key])
         if "relative_humidity" in data:
             self.publish("humidity", data["relative_humidity"])
+        self.bypass_raw = data.get("bypass_raw")
         level = data.get("mk2_level")
         if isinstance(level, int) and level > 0:
             self.last_level = level
@@ -132,11 +134,15 @@ class Mk2Bridge:
             return bool(value)
         if action == "bypass":
             request = str(value).lower()
+            # The controller checks the bypass every minute, so a command is
+            # only sent when the damper is not already there or on its way.
             if request in ("on", "open", "1", "true"):
-                self.unit.set_bypass(True)
+                if self.bypass_raw not in (mk2.BYPASS_OPENING, mk2.BYPASS_OPENED):
+                    self.unit.set_bypass(True)
                 self.publish("bypass_request", "ON")
             elif request in ("off", "closed", "close", "0", "false"):
-                self.unit.set_bypass(False)
+                if self.bypass_raw not in (mk2.BYPASS_CLOSING, mk2.BYPASS_CLOSED):
+                    self.unit.set_bypass(False)
                 self.publish("bypass_request", "OFF")
             return request
         if action == "afterheat_setpoint":

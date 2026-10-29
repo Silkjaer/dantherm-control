@@ -26,6 +26,7 @@ if "paho.mqtt.client" not in sys.modules:
 
 from controller_core import ControllerEngine, ControllerState, HardwareAdapter
 from dantherm_gateway import Gateway
+from mk2_bridge import Mk2Bridge
 
 
 class Clock:
@@ -145,6 +146,26 @@ class HardwareQueueTests(unittest.TestCase):
         thread.join(5)
         self.assertEqual(gateway.written, ["off"])
         self.assertEqual(caller["value"], "off")
+
+
+class Mk2BypassTests(unittest.TestCase):
+    def test_the_minute_check_sends_no_command_while_the_damper_is_there(self):
+        class Unit:
+            def __init__(self):
+                self.commands = []
+
+            def set_bypass(self, opened):
+                self.commands.append(opened)
+
+        unit = Unit()
+        bridge = Mk2Bridge(unit, lambda key, value: None)
+        bridge.apply("bypass", "on")
+        bridge.bypass_raw = 64
+        bridge.apply("bypass", "on")
+        bridge.bypass_raw = 255
+        bridge.apply("bypass", "on")
+        bridge.apply("bypass", "off")
+        self.assertEqual(unit.commands, [True, False])
 
 
 if __name__ == "__main__":
