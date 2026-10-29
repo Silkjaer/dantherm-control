@@ -1586,9 +1586,15 @@ class ControllerEngine:
         self.started_at = time.time()
         self.retry_limit = 3
         self.retry_base_seconds = 5.0
+        # After retry_limit quick retries a command that is still wanted is
+        # tried again at this slower pace instead of being given up.
+        self.retry_slow_seconds = 60.0
         self._failure_values: dict[str, object] = {}
         self._failure_counts: dict[str, int] = {}
         self._retry_at: dict[str, float] = {}
+        # Keys whose last write failed after it may have reached the unit, so
+        # last_applied no longer tells what the unit holds.
+        self._uncertain: set[str] = set()
 
     def update_measurements(self, *, rh=None, co2=None, outdoor=None, room=None) -> None:
         with self.lock:
@@ -2021,7 +2027,7 @@ class ControllerEngine:
         refresh_seconds: float | None = None,
     ) -> None:
         now = time.time()
-        unchanged = self.last_applied.get(key) == value
+        unchanged = key not in self._uncertain and self.last_applied.get(key) == value
         refreshed_recently = (
             now - self.last_applied_at.get(key, 0.0) < (refresh_seconds or 0.0)
         )
@@ -2031,30 +2037,39 @@ class ControllerEngine:
             self._failure_values[key] = value
             self._failure_counts[key] = 0
             self._retry_at[key] = 0.0
-        if self._failure_counts.get(key, 0) >= self.retry_limit or now < self._retry_at.get(key, 0.0):
+        if now < self._retry_at.get(key, 0.0):
             return
         if fn is None:
             error = RuntimeError(f"Hardware binding mangler: {key}")
             self.last_error = str(error)
-            self.write_failures += 1
-            self._failure_counts[key] = self._failure_counts.get(key, 0) + 1
-            self._retry_at[key] = now + self.retry_base_seconds * 2 ** (self._failure_counts[key] - 1)
+            self._note_failure(key, now)
             raise error
         try:
             fn(*args)
         except Exception as error:
             self.last_error = f"{key}: {error}"
-            self.write_failures += 1
-            self._failure_counts[key] = self._failure_counts.get(key, 0) + 1
-            self._retry_at[key] = now + self.retry_base_seconds * 2 ** (self._failure_counts[key] - 1)
+            # The write may have reached the unit before the reply was lost.
+            self._uncertain.add(key)
+            self._note_failure(key, now)
             raise
         else:
             self.last_applied[key] = value
             self.last_applied_at[key] = time.time()
             self.last_write_at = self.last_applied_at[key]
             self.last_error = None
+            self._uncertain.discard(key)
             self._failure_counts[key] = 0
             self._retry_at.pop(key, None)
+
+    def _note_failure(self, key: str, now: float) -> None:
+        self.write_failures += 1
+        count = self._failure_counts.get(key, 0) + 1
+        self._failure_counts[key] = count
+        if count < self.retry_limit:
+            delay = self.retry_base_seconds * 2 ** (count - 1)
+        else:
+            delay = self.retry_slow_seconds
+        self._retry_at[key] = now + delay
 
     def apply(self) -> dict[str, object]:
         """Apply only changed desired values; arbitration is enforced below this layer."""
@@ -2075,7 +2090,9 @@ class ControllerEngine:
             self.last_applied.pop("fan_pair", None)
         bypass = str(snapshot.get("effective_bypass", snapshot["bypass"]))
         if self.hardware.set_bypass is not None:
-            self._call("bypass", bypass, self.hardware.set_bypass, bypass)
+            # The bypass write reads register 68 first and only writes on a
+            # difference, so the refresh also puts back a changed request.
+            self._call("bypass", bypass, self.hardware.set_bypass, bypass, refresh_seconds=60.0)
         profile = snapshot.get("effective_profile")
         if profile and not standby:
             pair = (int(profile["extract"]), int(profile["supply"]))
