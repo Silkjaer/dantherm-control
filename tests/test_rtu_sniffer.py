@@ -1,8 +1,10 @@
 import importlib.machinery
+import itertools
 import sys
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "gateway"))
 
@@ -112,6 +114,17 @@ class RtuSnifferTests(unittest.TestCase):
     def test_repeated_frame_inside_the_window_is_reported_once(self):
         self.assertEqual(feed_chunks(sniffer(250), FC06_WRITE, FC06_WRITE), [FC06_WRITE])
         self.assertEqual(feed_chunks(sniffer(0), FC06_WRITE, FC06_WRITE), [FC06_WRITE, FC06_WRITE])
+
+    def test_duplicate_filter_forgets_frames_outside_the_window(self):
+        # Changing readings make every frame new; the filter must not grow
+        # without bound over days of traffic.
+        target = sniffer(250)
+        writes = [Gateway.write_frame(67, value) for value in range(3000)]
+        ticks = itertools.count()
+        with patch("dantherm_gateway.time.monotonic", side_effect=lambda: 1000 + next(ticks) * 0.01):
+            self.assertEqual(feed_chunks(target, *writes), writes)
+            self.assertLessEqual(len(target.last_seen), 1024)
+            self.assertEqual(feed_chunks(target, writes[-1]), [])
 
     def test_split_hcp4_temperature_write_reaches_the_decoder(self):
         gateway = Gateway.__new__(Gateway)

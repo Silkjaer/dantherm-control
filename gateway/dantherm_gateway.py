@@ -556,6 +556,12 @@ class RtuSniffer:
     def feed(self, data: bytes):
         for frame in self.stream.feed(data):
             now = time.monotonic()
+            if len(self.last_seen) >= 1024:
+                # Every new reading is a new frame. Only those seen within
+                # the window can still suppress a repeat; forget the rest.
+                self.last_seen = {
+                    seen: at for seen, at in self.last_seen.items() if now - at < self.dedupe_s
+                }
             previous = self.last_seen.get(frame, 0.0)
             self.last_seen[frame] = now
             if now - previous >= self.dedupe_s:
