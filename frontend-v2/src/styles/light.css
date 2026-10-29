@@ -106,6 +106,7 @@
 :root[data-theme="light"] .readback-icon.damper.active::before{color:#33c97c}
 :root[data-theme="light"] .readback-icon.heater::before{color:#5e7685}
 :root[data-theme="light"] .readback-icon.heater.active::before{color:#f07f0d;text-shadow:0 0 10px #f0680d}
+:root[data-theme="light"] .readback-icon.room::before{color:#3f5562}
 :root[data-theme="light"] .control-label{color:#4b5f6a}
 :root[data-theme="light"] .pro-segment{border:1px solid #b3cddd;background:#f0f6f9}
 :root[data-theme="light"] .pro-segment button,:root[data-theme="light"] .pro-levels button,:root[data-theme="light"] .mini-buttons button,:root[data-theme="light"] .setpoint-stepper button,:root[data-theme="light"] .fireplace-actions button{border:1px solid #a9c3d4;background:#f0f6f9;color:#384a54}

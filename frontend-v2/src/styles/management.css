@@ -30,6 +30,7 @@
 .settings-table{font-size:13px}.settings-table th{font-size:12px}
 .primary-action,.secondary-action,.danger-outline{min-height:40px;font-size:13px}
 .settings-savebar span{font-size:13px}
+.settings-grid .settings-wide{grid-column:1/-1}
 .pm25-rooms{grid-column:1/-1;display:grid;gap:6px}.pm25-rooms>span{color:var(--muted);font-size:13px;font-weight:750}.pm25-rooms label small{color:var(--muted);font-weight:600;margin-left:6px}
 .pm25-room em{font-style:normal;color:var(--text);font-size:14px}
 .integration-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.integration-field{display:grid;gap:6px;min-width:0}.integration-field>span{color:var(--muted);font-size:12.5px;font-weight:750}.integration-field small{color:var(--muted);font-size:12px}

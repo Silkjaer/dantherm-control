@@ -10,6 +10,7 @@ import { AccountPanel } from "../components/AccountPanel";
 import { MailPanel } from "../components/MailPanel";
 import { UsersPanel } from "../components/UsersPanel";
 import { hasAfterheat } from "../lib/afterheat";
+import { roomSourceLabel } from "../lib/roomTemperature";
 import "../styles/panels.css";import "../styles/management.css";
 
 type Data = Record<string, unknown>;
@@ -104,18 +105,17 @@ function initialSection(): SectionId {
 
 function Help({ children }: { children: ReactNode }) { return <small className="settings-field-help">{children}</small>; }
 
-/** Where the room temperature comes from: one setting shared by free cooling and the afterheat. */
+/** Where the room temperature comes from: one setting shared by free cooling and the afterheat.
+ *  Full width, so its long help does not stretch the field beside it. */
 function RoomSourceField({ lang, value, rooms, onChange }: { lang: Lang; value: unknown; rooms: ReactNode; onChange: (value: string) => void }) {
-  return <label>{lang === "da" ? "Rumtemperatur fra" : "Room temperature from"}<select value={s(value, "auto")} onChange={e => onChange(e.target.value)}><option value="auto">{lang === "da" ? "Automatisk: HA-rum, ellers T3" : "Automatic: HA rooms, else T3"}</option><option value="t3">{lang === "da" ? "Udsugningsluft T3" : "Extract air T3"}</option><option value="t5">{lang === "da" ? "HRC2-rumføler T5 (upålidelig uden HCP4)" : "HRC2 room sensor T5 (unreliable without HCP4)"}</option><option value="ha_average">{lang === "da" ? "Gennemsnit af HA-rum" : "Average of HA rooms"}</option>{rooms}</select><Help>{lang === "da" ? "Frikøling og eftervarme styrer efter den samme rumtemperatur. Automatisk bruger gennemsnittet af dine HA-rum med temperatur (badeværelser og brændeovns- og udeluftsfølere tæller ikke med). Tilføj rummene med dine egne temperaturfølere i HCH5 Control-integrationen under Smart Auto-rum, gerne med styring slået fra. Findes der ingen, bruges T3, som er udsugningsluft og også indeholder luft fra køkken og bad. T5 sidder i HRC2-fjernbetjeningen og opdateres ikke, når Pi'en har erstattet HCP4." : "Free cooling and the afterheat steer by the same room temperature. Automatic uses the average of your HA rooms with a temperature (bathrooms and stove or outdoor sensors are left out). Add rooms with your own temperature sensors in the HCH5 Control integration under Smart Auto rooms, ideally with control turned off. Without any, T3 is used, which is extract air and includes kitchen and bathroom air. T5 sits in the HRC2 remote and is not updated once the Pi has replaced HCP4."}</Help></label>;
+  return <label className="settings-wide">{lang === "da" ? "Rumtemperatur fra" : "Room temperature from"}<select value={s(value, "auto")} onChange={e => onChange(e.target.value)}><option value="auto">{lang === "da" ? "Automatisk: HA-rum, ellers T3" : "Automatic: HA rooms, else T3"}</option><option value="t3">{lang === "da" ? "Udsugningsluft T3" : "Extract air T3"}</option><option value="t5">{lang === "da" ? "HRC2-rumføler T5 (upålidelig uden HCP4)" : "HRC2 room sensor T5 (unreliable without HCP4)"}</option><option value="ha_average">{lang === "da" ? "Gennemsnit af HA-rum" : "Average of HA rooms"}</option>{rooms}</select><Help>{lang === "da" ? "Frikøling og eftervarme styrer efter den samme rumtemperatur. Automatisk bruger gennemsnittet af dine HA-rum med temperatur (badeværelser og brændeovns- og udeluftsfølere tæller ikke med). Tilføj rummene med dine egne temperaturfølere i HCH5 Control-integrationen under Smart Auto-rum, gerne med styring slået fra. Findes der ingen, bruges T3, som er udsugningsluft og også indeholder luft fra køkken og bad. T5 sidder i HRC2-fjernbetjeningen og opdateres ikke, når Pi'en har erstattet HCP4." : "Free cooling and the afterheat steer by the same room temperature. Automatic uses the average of your HA rooms with a temperature (bathrooms and stove or outdoor sensors are left out). Add rooms with your own temperature sensors in the HCH5 Control integration under Smart Auto rooms, ideally with control turned off. Without any, T3 is used, which is extract air and includes kitchen and bathroom air. T5 sits in the HRC2 remote and is not updated once the Pi has replaced HCP4."}</Help></label>;
 }
 
 /** The room temperature in use right now and its source. */
 function RoomTemperatureSummary({ lang, controller }: { lang: Lang; controller: Data }) {
-  const used = s(controller.afterheat_room_source_used);
-  const source = !used ? "—" : used === "ha_average" ? (lang === "da" ? "Gennemsnit af HA-rum" : "Average of HA rooms") : used.startsWith("room:") ? used.slice(5) : used.toUpperCase();
   return <>
     <span>{lang === "da" ? "Rumtemperatur" : "Room temperature"}<strong>{fmt(controller.afterheat_room_temperature, lang, 1, " °C")}</strong></span>
-    <span>{lang === "da" ? "Kilde lige nu" : "Source right now"}<strong>{source}</strong></span>
+    <span>{lang === "da" ? "Kilde lige nu" : "Source right now"}<strong>{roomSourceLabel(controller.afterheat_room_source_used, lang)}</strong></span>
   </>;
 }
 
@@ -589,9 +589,9 @@ export function SettingsPage() {
       <div className="settings-grid">
         <label className="check-row"><input type="checkbox" checked={form.cooling_enabled === true} onChange={check("cooling_enabled")}/> {lang === "da" ? "Frikøling" : "Free cooling"}</label>
         <Help>{lang === "da" ? "Er det for varmt inde og køligere ude, åbnes bypass, så udeluften går uden om varmeveksleren. Bypass-spjældet er langsomt (ca. 3 minutter), derfor venter controlleren og holder minimumstider." : "If it is too warm inside and cooler outside, the bypass opens so outdoor air skips the heat exchanger. The damper is slow (about 3 minutes), so the controller waits and keeps minimum times."}</Help>
-        <label>{lang === "da" ? "Start ved rumtemperatur" : "Start at room temperature"}<input type="number" min="18" max="30" step="0.5" value={n(form.cooling_room_setpoint, 23)} onChange={num("cooling_room_setpoint")}/><span>°C</span></label>
         {/* Without afterheat its section is hidden, so the shared source is chosen here. */}
         {!hasAfterheat(unit) && <RoomSourceField lang={lang} value={form.afterheat_room_source} rooms={roomOptions(form.afterheat_room_source)} onChange={value => set("afterheat_room_source", value)}/>}
+        <label>{lang === "da" ? "Start ved rumtemperatur" : "Start at room temperature"}<input type="number" min="18" max="30" step="0.5" value={n(form.cooling_room_setpoint, 23)} onChange={num("cooling_room_setpoint")}/><span>°C</span></label>
         <label>{lang === "da" ? "Hysterese" : "Hysteresis"}<input type="number" min="0.2" max="3" step="0.1" value={n(form.cooling_hysteresis, 0.5)} onChange={num("cooling_hysteresis")}/><span>°C</span></label>
         <label>{lang === "da" ? "Laveste udetemperatur" : "Lowest outdoor temperature"}<input type="number" min="-10" max="25" step="0.5" value={n(form.cooling_outdoor_min, 12)} onChange={num("cooling_outdoor_min")}/><span>°C</span><Help>{lang === "da" ? "Koldere udeluft end dette blæses ikke ind uden varmegenvinding." : "Outdoor air colder than this is never blown in without heat recovery."}</Help></label>
         <label>{lang === "da" ? "Mindste forskel inde/ude" : "Minimum indoor/outdoor difference"}<input type="number" min="0.5" max="10" step="0.5" value={n(form.cooling_min_delta, 1.5)} onChange={num("cooling_min_delta")}/><span>°C</span></label>
