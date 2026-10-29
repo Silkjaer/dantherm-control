@@ -1353,10 +1353,13 @@ class Gateway:
                             key, raw / 100.0,
                             source="passive_hcp4_hac1_register_180",
                         )
-                self.publish_temperature(
-                    "supply_temperature", values[1] / 100.0,
-                    source="passive_hcp4_hac1_register_181",
-                )
+                # Same range as above: a sensor-fault word such as 0x8000
+                # must not become 327.68 C.
+                if 500 <= values[1] <= 4000:
+                    self.publish_temperature(
+                        "supply_temperature", values[1] / 100.0,
+                        source="passive_hcp4_hac1_register_181",
+                    )
             elif register == 185 and count == 5 and byte_count == 10:
                 values = [
                     int.from_bytes(frame[index:index + 2], "big")

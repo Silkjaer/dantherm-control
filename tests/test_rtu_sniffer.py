@@ -139,6 +139,15 @@ class RtuSnifferTests(unittest.TestCase):
         self.assertEqual(gateway.state["supply_temp"], 20.94)
         self.assertEqual(gateway.state["hrc2_t5_temperature"], 23.40)
 
+    def test_a_faulty_t2_in_hcp4s_write_is_not_published(self):
+        gateway = Gateway.__new__(Gateway)
+        gateway.state = {}
+        gateway.mqtt_enabled = False
+        gateway.decode(Gateway.write_multiple_frame(0x40, 180, [1415, 0x8000, 2100, 900, 2340]))
+        self.assertEqual(gateway.state["outdoor_temp"], 14.15)
+        self.assertIsNone(gateway.state.get("supply_temperature"))
+        self.assertIsNone(gateway.state.get("supply_temp"))
+
 
 if __name__ == "__main__":
     unittest.main()
