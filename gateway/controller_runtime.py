@@ -145,6 +145,7 @@ class ControllerRuntime:
         self._last_master = new
         if new == MasterArbitrator.PI:
             self.engine.last_applied.clear()
+            self.engine._uncertain.clear()
             self.engine._failure_values.clear()
             self.engine._failure_counts.clear()
             self.engine._retry_at.clear()

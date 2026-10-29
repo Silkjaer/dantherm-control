@@ -625,7 +625,7 @@ class Gateway:
         self.capture_toggle_requested = False
         self.controller_reload_requested = False
         self.control_queue: queue.SimpleQueue[str] = queue.SimpleQueue()
-        self.controller_hardware_queue: queue.SimpleQueue[tuple[str, object, threading.Event, dict]] = queue.SimpleQueue()
+        self.controller_hardware_queue: queue.SimpleQueue[tuple[str, object, threading.Event, dict, float]] = queue.SimpleQueue()
         self.fireplace_queue: queue.SimpleQueue[bool] = queue.SimpleQueue()
         self.filter_reset_queue: queue.SimpleQueue[bool] = queue.SimpleQueue()
         self.filter_interval_queue: queue.SimpleQueue[int] = queue.SimpleQueue()
@@ -735,8 +735,12 @@ class Gateway:
         """Serialize controller writes onto the gateway's sole RS485 thread."""
         done = threading.Event()
         result: dict[str, object] = {}
-        self.controller_hardware_queue.put((action, value, done, result))
-        if not done.wait(4.0):
+        timeout = 4.0
+        # The caller gives up after the timeout; a command still waiting by
+        # then is dropped, so an old value is never written after a newer one.
+        deadline = time.monotonic() + timeout
+        self.controller_hardware_queue.put((action, value, done, result, deadline))
+        if not done.wait(timeout):
             raise TimeoutError(f"controller hardware timeout: {action}")
         if result.get("error"):
             raise RuntimeError(str(result["error"]))
@@ -744,7 +748,12 @@ class Gateway:
 
     def process_controller_hardware(self, ser: serial.Serial):
         while not self.controller_hardware_queue.empty():
-            action, value, done, result = self.controller_hardware_queue.get()
+            action, value, done, result, deadline = self.controller_hardware_queue.get()
+            if time.monotonic() > deadline:
+                LOG.warning("Controller hardware action dropped after its caller timed out: %s", action)
+                result["error"] = "dropped after timeout"
+                done.set()
+                continue
             try:
                 bridge = getattr(self, "mk2_bridge", None)
                 if bridge is not None:
