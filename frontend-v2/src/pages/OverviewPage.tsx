@@ -7,6 +7,7 @@ import { ArrowRight, CloudFog, Flame, Gauge, House, Leaf, Power, Snowflake, Wind
 import { Hch5UnitDiagram } from "../components/Hch5UnitDiagram";
 import { AfterheatThermostat } from "../components/AfterheatThermostat";
 import { hasAfterheat } from "../lib/afterheat";
+import { roomSourceLabel } from "../lib/roomTemperature";
 import { describeControl } from "../lib/control";
 import { HistoryChart, type HistorySeries } from "../components/HistoryChart";
 import { postJson, requestJson } from "../lib/api";
@@ -339,6 +340,7 @@ export function OverviewPage() {
               supplyRpm={supplyRpm} extractRpm={extractRpm} supplyPercent={supplyPercent} extractPercent={extractPercent}
               bypassActual={bypassActual} bypassRequest={bypassRequest} heating={heating} recovery={recovery} supplyRecovery={t2Recovery}
               busActive={busHealthy} bypassRaw={bypassRaw} afterheat={afterheat} afterheatLockout={afterheatLockout} afterheatCoil={controller.afterheat_coil === "water" ? "water" : "electric"}
+              room={{ temperature: number(controller.afterheat_room_temperature), source: roomSourceLabel(controller.afterheat_room_source_used, "da", true) }}
               bypassTravelDirection={bypassTravelDirection} bypassTravelSeconds={bypassTravelSeconds} bypassTravelTotal={bypassTravelTotal}
               control={online ? describeControl(controller) : null}
             />

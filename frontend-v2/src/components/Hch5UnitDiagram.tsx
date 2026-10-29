@@ -47,6 +47,9 @@ export interface Hch5UnitDiagramProps {
   afterheatLockout?: boolean;
   /** Afterheater drawn after the unit: an electric element (default) or a water coil fed with flow/return water. */
   afterheatCoil?: AfterheatCoil;
+  /** The room temperature free cooling steers by and where it comes from;
+   *  shown in the afterheat tile's place on a unit without afterheat. */
+  room?: { temperature: Num; source: string } | null;
   /** What currently decides the ventilation, shown bottom-right below T4. */
   control?: ControlSummary | null;
   onTemperatureClick?: (sensor: string) => void;
@@ -477,7 +480,7 @@ function WaterCoil({ heating, lockout, flowWater, returnWater }: { heating: bool
 }
 
 export function Hch5UnitDiagram(props:Hch5UnitDiagramProps) {
-  const {outdoor,extract,exhaust,afterHeater,beforeHeater=null,t2Corrected=false,beforeHeaterEstimate=null,frost,flowWater,returnWater,supplyRpm,extractRpm,supplyPercent,extractPercent,bypassActual,bypassRequest,heating,recovery,supplyRecovery=null,busActive=false,bypassRaw=null,bypassTravelDirection=null,bypassTravelSeconds=null,bypassTravelTotal=null,afterheat=true,afterheatLockout=false,afterheatCoil="electric",control=null,onTemperatureClick}=props;
+  const {outdoor,extract,exhaust,afterHeater,beforeHeater=null,t2Corrected=false,beforeHeaterEstimate=null,frost,flowWater,returnWater,supplyRpm,extractRpm,supplyPercent,extractPercent,bypassActual,bypassRequest,heating,recovery,supplyRecovery=null,busActive=false,bypassRaw=null,bypassTravelDirection=null,bypassTravelSeconds=null,bypassTravelTotal=null,afterheat=true,afterheatLockout=false,afterheatCoil="electric",room=null,control=null,onTemperatureClick}=props;
   const water = afterheatCoil === "water";
   const waterDelta = flowWater === null || returnWater === null ? null : flowWater - returnWater;
   // The unit reports only closed/opening/closing/open and needs about three
@@ -658,6 +661,6 @@ export function Hch5UnitDiagram(props:Hch5UnitDiagramProps) {
       </div>
       {afterheat && <div className="hch-mobile-subreadings"><button onClick={() => onTemperatureClick?.("frost")}>Frost <strong>{fmt(frost)}</strong></button><button onClick={() => onTemperatureClick?.("flowWater")}>Vand frem <strong>{fmt(flowWater)}</strong></button><button onClick={() => onTemperatureClick?.("returnWater")}>Vand retur <strong>{fmt(returnWater)}</strong></button><button onClick={() => onTemperatureClick?.("waterDelta")}>Afkøl <strong>{fmt(waterDelta)}</strong></button></div>}
     </div>
-    <div className="unit-readback-row"><div className="unit-readback"><span className="readback-icon fan"/><div><small>Tilluft ventilator</small><strong>{int(supplyRpm)} RPM</strong><em>{int(supplyPercent)}%</em></div></div><div className="unit-readback"><span className="readback-icon fan"/><div><small>Fraluft ventilator</small><strong>{int(extractRpm)} RPM</strong><em>{int(extractPercent)}%</em></div></div><div className="unit-readback"><span className={`readback-icon damper ${bypassOpen?"active":""}`}/><div><small>Bypass-spjæld</small><strong>{bypassPhase?bypassLabel:bypassOpen?"Åbent":"Lukket"}</strong><em>{bypassAwaitingEnd?"Afventer endestilling":bypassRemaining===null?`Ønske: ${bypassWanted?"On":"Auto"}`:`ca. ${formatRemaining(bypassRemaining)} tilbage`}</em></div></div>{afterheat && <div className="unit-readback"><span className={`readback-icon heater ${heating?"active":""}`}/><div><small>Ekstern eftervarme</small><strong>{heating?"Aktiv":afterheatLockout?"Spærret":"Ikke aktiv"}</strong><em>{afterheatLockout?"Sommerstop: ude ≥ 15 °C":"Kun setpunkt styres"}</em></div></div>}</div>
+    <div className="unit-readback-row"><div className="unit-readback"><span className="readback-icon fan"/><div><small>Tilluft ventilator</small><strong>{int(supplyRpm)} RPM</strong><em>{int(supplyPercent)}%</em></div></div><div className="unit-readback"><span className="readback-icon fan"/><div><small>Fraluft ventilator</small><strong>{int(extractRpm)} RPM</strong><em>{int(extractPercent)}%</em></div></div><div className="unit-readback"><span className={`readback-icon damper ${bypassOpen?"active":""}`}/><div><small>Bypass-spjæld</small><strong>{bypassPhase?bypassLabel:bypassOpen?"Åbent":"Lukket"}</strong><em>{bypassAwaitingEnd?"Afventer endestilling":bypassRemaining===null?`Ønske: ${bypassWanted?"On":"Auto"}`:`ca. ${formatRemaining(bypassRemaining)} tilbage`}</em></div></div>{afterheat && <div className="unit-readback"><span className={`readback-icon heater ${heating?"active":""}`}/><div><small>Ekstern eftervarme</small><strong>{heating?"Aktiv":afterheatLockout?"Spærret":"Ikke aktiv"}</strong><em>{afterheatLockout?"Sommerstop: ude ≥ 15 °C":"Kun setpunkt styres"}</em></div></div>}{!afterheat && room && <div className="unit-readback"><span className="readback-icon room"/><div><small>Rumtemperatur</small><strong>{fmt(room.temperature)}</strong><em>{room.source}</em></div></div>}</div>
   </div>;
 }
