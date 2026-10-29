@@ -38,6 +38,8 @@ ALARM_DELAYS = {
     "recovery_low": 1800,
     "recovery_mismatch": 3600,
     "bypass_not_closing": 1200,
+    # The damper takes about 180 s each way; a margin on top of that.
+    "bypass_not_in_position": 300,
     "afterheat_no_lift": 1800,
     "sensor_missing": 300,
     "bus_unhealthy": 120,
@@ -49,6 +51,7 @@ ALARM_TEXT = {
     "recovery_low": "Lav varmegenvinding: veksleren kan være snavset eller utæt",
     "recovery_mismatch": "Genvinding målt på indblæsning og udsugning er uenige: mulig utæthed eller følerfejl",
     "bypass_not_closing": "Bypass ser ikke ud til at lukke: indblæsningen følger udeluften",
+    "bypass_not_in_position": "Bypass har ikke nået den ønskede stilling: spjæld eller motor kan sidde fast",
     "afterheat_no_lift": "Eftervarmen kalder, men luften bliver ikke varmere: ventil, pumpe eller luft i fladen",
     "sensor_missing": "En 1-Wire-føler med en rolle svarer ikke",
     "bus_unhealthy": "Ingen sund RS485-forbindelse til anlægget",
@@ -60,6 +63,7 @@ ALARM_SEVERITY = {
     "recovery_low": "warning",
     "recovery_mismatch": "info",
     "bypass_not_closing": "warning",
+    "bypass_not_in_position": "warning",
     "afterheat_no_lift": "warning",
     "sensor_missing": "warning",
     "bus_unhealthy": "critical",
@@ -256,6 +260,13 @@ class Diagnostics:
             ah_setpoint is not None and ah_before is not None and ah_lift is not None
             and ah_before + ah_lift >= ah_setpoint - 1.0
         )
+        # The damper reports 0 when closed and 255 when open, and 32/64 (or 1
+        # on an MKII) while it moves. The request is register 68 as read back,
+        # and only means open or closed when the Pi writes it: HCP4 keeps 255
+        # there while the unit runs its own bypass.
+        request = s.get("actual_bypass_request") if s.get("active_master") == "pi" else None
+        wanted_raw = 255 if request in (True, "on", "ON") else 0 if request in (False, "off", "OFF") else None
+        bypass_raw = _num(s.get("actual_bypass_raw"))
         conditions = {
             "frost_risk": frost_state == "risk",
             "recovery_low": cold and supply_recovery is not None and supply_recovery < 60,
@@ -264,6 +275,8 @@ class Diagnostics:
             "bypass_not_closing": cold and s.get("actual_bypass_request") in (False, "off", "OFF", 0)
                 and not bypass and t2 is not None and t1 is not None and t3 is not None
                 and (t2 - t1) < 0.25 * (t3 - t1),
+            "bypass_not_in_position": wanted_raw is not None and bypass_raw is not None
+                and bypass_raw != wanted_raw,
             "afterheat_no_lift": s.get("actual_afterheat") is True
                 and s.get("actual_afterheat_outdoor_lockout") is not True
                 and _num(s.get("afterheat_lift")) is not None and _num(s.get("afterheat_lift")) < 0.5
