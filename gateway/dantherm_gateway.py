@@ -34,6 +34,7 @@ import yaml
 from controller_core import HardwareAdapter
 from controller_dashboard_server import ControllerDashboardHttpServer
 from controller_runtime import ControllerRuntime
+from passivelink_parser import temperature_value
 from sensor_freshness import SENSOR_SAMPLE_TIMESTAMPS, fresh_sensor_value
 
 LOG = logging.getLogger("dantherm_gateway")
@@ -1472,7 +1473,8 @@ class Gateway:
                     ("outdoor_temperature", "supply_temperature", "extract_temperature", "exhaust_temperature"),
                     values,
                 ):
-                    value = raw / 100.0
+                    # Signed hundredths: 65036 is -5.00 C; 0x7FFF/0x8000 are sensor faults.
+                    value = temperature_value(raw)
                     self.publish_temperature(legacy_key, value)
                     self.publish_temperature(canonical_key, value)
                 self.state["temperature_sample_monotonic"] = time.monotonic()
@@ -1783,7 +1785,8 @@ class Gateway:
         for key in keys:
             if not valid(key):
                 raise RuntimeError(f"afterheat temperature unavailable: {key}")
-            words.append(round(float(self.state[key]) * 100))
+            # A register word is unsigned: -5.00 C goes out as 65036.
+            words.append(round(float(self.state[key]) * 100) & 0xFFFF)
         return [*words, current[4]]
 
     def write_afterheat_temperature_block(self, ser: serial.Serial) -> list[int]:
@@ -2011,7 +2014,8 @@ class Gateway:
                 ("outdoor_temperature", "supply_temperature", "extract_temperature", "exhaust_temperature"),
                 temperatures,
             ):
-                value = raw / 100.0
+                # Signed hundredths: 65036 is -5.00 C; 0x7FFF/0x8000 are sensor faults.
+                value = temperature_value(raw)
                 self.publish_temperature(legacy_key, value)
                 self.publish_temperature(canonical_key, value)
             self.state["temperature_sample_monotonic"] = time.monotonic()
