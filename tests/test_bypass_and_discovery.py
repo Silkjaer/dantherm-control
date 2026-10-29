@@ -48,6 +48,8 @@ def make_gateway():
     gateway.state = {}
     gateway.retain = True
     gateway.mqtt_enabled = False
+    # These tests model a unit with a HAC1 that has answered.
+    gateway.hac1_presence().seen()
     return gateway
 
 

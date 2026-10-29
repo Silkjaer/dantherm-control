@@ -116,11 +116,24 @@ class GatewayWithoutHac1Tests(unittest.TestCase):
             self.assertIsNone(gateway.controller_afterheat_setpoint(20))
         queue.assert_not_called()
 
-    def test_controller_afterheat_still_tries_an_unconfirmed_hac1(self):
+    def test_controller_afterheat_waits_until_hac1_has_answered(self):
         gateway = self.make_gateway()
         with patch.object(Gateway, "queue_controller_hardware", return_value=20) as queue:
+            self.assertIsNone(gateway.controller_afterheat_setpoint(20))
+            queue.assert_not_called()
+            gateway.hac1_presence().seen()
             self.assertEqual(gateway.controller_afterheat_setpoint(20), 20)
         queue.assert_called_once_with("afterheat_setpoint", 20)
+
+    def test_nothing_is_written_to_a_hac1_that_has_not_answered(self):
+        gateway = self.make_gateway()
+        with patch.object(Gateway, "_write_afterheat_block") as block, \
+                patch.object(Gateway, "write_afterheat_temperature_block") as temperatures:
+            self.assertFalse(gateway.refresh_afterheat_temperature_block_if_due(object(), now=1e6))
+            with self.assertRaisesRegex(RuntimeError, "HAC1 not detected yet"):
+                gateway.write_afterheat_setpoint(object(), 20)
+            block.assert_not_called()
+            temperatures.assert_not_called()
 
     def test_failed_refresh_is_an_error_only_once_hac1_has_answered(self):
         gateway = self.make_gateway()

@@ -41,6 +41,10 @@ class Hac1Presence:
     def absent(self) -> bool:
         return self.state == self.ABSENT
 
+    @property
+    def present(self) -> bool:
+        return self.state == self.PRESENT
+
     def seen(self) -> None:
         """HAC1 answered: a read response or a write acknowledgement."""
         self.state = self.PRESENT
