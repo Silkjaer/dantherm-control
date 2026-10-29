@@ -73,6 +73,29 @@ class DiagnosticsTest(unittest.TestCase):
         r = d.update(s, T0 + 1201)
         self.assertIn("bypass_not_closing", {a["code"] for a in r["diagnostics_alarms"]})
 
+    def test_bypass_that_does_not_reach_its_position_is_raised_after_the_travel_time(self):
+        d = Diagnostics()
+        moving = winter(active_master="pi", actual_bypass_request="ON", actual_bypass_raw=64)
+        d.update(moving, T0)
+        r = d.update(moving, T0 + 240)
+        self.assertNotIn("bypass_not_in_position", {a["code"] for a in r["diagnostics_alarms"]})
+        r = d.update(winter(active_master="pi", actual_bypass_request="ON", actual_bypass_raw=255), T0 + 250)
+        self.assertEqual(r["diagnostics_alarm_count"], 0)
+        stuck = winter(active_master="pi", actual_bypass_request="OFF", actual_bypass_raw=32)
+        d.update(stuck, T0 + 300)
+        r = d.update(stuck, T0 + 601)
+        self.assertIn("bypass_not_in_position", {a["code"] for a in r["diagnostics_alarms"]})
+        r = d.update(winter(active_master="pi", actual_bypass_request="OFF", actual_bypass_raw=0), T0 + 610)
+        self.assertNotIn("bypass_not_in_position", {a["code"] for a in r["diagnostics_alarms"]})
+
+    def test_bypass_position_is_only_judged_on_the_pis_own_request(self):
+        for state in (winter(active_master="pi", actual_bypass_raw=255),
+                      winter(active_master="hcp4", actual_bypass_request="ON", actual_bypass_raw=0)):
+            d = Diagnostics()
+            d.update(state, T0)
+            r = d.update(state, T0 + 3600)
+            self.assertEqual(r["diagnostics_alarm_count"], 0)
+
     def test_sfp_reference_and_filter_clogging(self):
         d = Diagnostics()
         t = T0
