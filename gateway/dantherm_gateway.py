@@ -2134,16 +2134,13 @@ class Gateway:
             self.publish("fan_supply_rpm", supply_rpm)
             self.publish_bypass_raw(bypass_raw)
             self.publish("status_code", status_code)
+            # The sensor sits in the extract air, so its reading is the room-side RH.
+            # Rescaling it from T4 to T3 halved it and put the indoor dew point
+            # below the outdoor one; humidity control then never started.
             measured_rh = round(humidity_raw * 100 / 255, 1) if 0 < humidity_raw <= 255 else None
-            extract_temp = self.state.get("extract_temp")
-            exhaust_temp = self.state.get("exhaust_temp")
-            relative_rh = None
-            if measured_rh is not None and isinstance(extract_temp, (int, float)) and isinstance(exhaust_temp, (int, float)):
-                saturation = lambda temperature: 6.112 * math.exp(17.62 * temperature / (243.12 + temperature))
-                relative_rh = round(measured_rh * saturation(exhaust_temp) / saturation(extract_temp), 1)
             self.publish("measured_relative_humidity", measured_rh)
-            self.publish("relative_humidity", relative_rh)
-            self.publish("humidity", relative_rh)
+            self.publish("relative_humidity", measured_rh)
+            self.publish("humidity", measured_rh)
         if hac200 is not None and hac200[:3] == [0x3000, 0x1100, 0]:
             if 300 <= hac200[3] <= 10000:
                 self.publish("co2", hac200[3])

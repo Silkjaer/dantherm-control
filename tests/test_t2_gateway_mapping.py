@@ -15,3 +15,8 @@ def test_hac1_snapshot_maps_register_181_to_t2_and_205_to_t2ah():
     assert '"heating_coil_after_temperature": temperature(values[25])' in source
     assert '"heating_coil_frost_temperature": temperature(values[26])' in source
     assert 'self.state["temperature_source"] = "hac1_snapshot_180_209"' in source
+
+def test_active_path_publishes_measured_humidity_uncompensated():
+    source = (ROOT / "gateway/dantherm_gateway.py").read_text()
+    assert 'self.publish("humidity", measured_rh)' in source
+    assert "relative_rh" not in source
