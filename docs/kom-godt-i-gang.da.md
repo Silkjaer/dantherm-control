@@ -77,7 +77,7 @@ Tryk **Gem controller**. Vælg til sidst driftstilstand under **Drift og styring
 | --- | --- |
 | **Local Auto** | Pi'en styrer efter anlæggets egen CO₂ og fugt. Virker helt uden Home Assistant. |
 | **Smart Auto** | Som Local Auto, men også med rum-sensorer fra Home Assistant. Det værste relevante rum bestemmer. |
-| **Manuel** | Fast trin 1–4 (eller 1–6 med 6-trins styring). Trin 4 kører 4 timer og går så tilbage til trin 3, som på Dantherms panel. |
+| **Manuel** | Fast trin 1–4 (eller 1–6 med 6-trins styring). Det højeste trin kører 4 timer og går så tilbage til det, anlægget kørte før (fx Smart Auto eller et andet trin), ellers til trin 3. |
 
 Eftervarmen styres med termostaten i højre side: træk i skiven eller brug − / +, og tænd/sluk med knappen.
 

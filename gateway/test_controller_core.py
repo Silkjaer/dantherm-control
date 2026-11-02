@@ -53,15 +53,41 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(result["effective_level"], 3)
         self.assertEqual((result["effective_profile"]["extract"], result["effective_profile"]["supply"]), (64, 64))
 
-    def test_manual_step_4_returns_to_step_3_after_four_hours(self):
+    def test_manual_step_4_returns_to_auto_after_four_hours(self):
         state, engine = self.make()
+        state.configure({"mode": "smart_auto"})
         state.configure({"mode": "manual", "manual_level": 4})
         until = state.data["max_level_until"]
         self.assertAlmostEqual(until - time.time(), 4 * 3600, delta=5)
-        self.assertEqual(engine.resolve(now=until - 60)["effective_level"], 4)
-        self.assertEqual(engine.resolve(now=until + 1)["effective_level"], 3)
-        self.assertEqual(state.data["manual_level"], 3)
+        result = engine.resolve(now=until - 60)
+        self.assertEqual(result["effective_level"], 4)
+        self.assertIn("tilbage til Smart Auto", result["effective_reason"])
+        engine.resolve(now=until + 1)
+        self.assertEqual((state.data["mode"], state.data["manual_level"]), ("smart_auto", 3))
         self.assertIsNone(state.data["max_level_until"])
+        self.assertIsNone(state.data["max_level_return"])
+
+    def test_manual_step_4_returns_to_the_manual_step_before(self):
+        state, engine = self.make()
+        state.configure({"mode": "manual", "manual_level": 2})
+        state.configure({"manual_level": 4})
+        # Choosing step 4 again restarts the hours but keeps where it returns to.
+        state.configure({"manual_level": 4})
+        until = state.data["max_level_until"]
+        self.assertIn("tilbage til trin 2", engine.resolve(now=until - 60)["effective_reason"])
+        self.assertEqual(engine.resolve(now=until + 1)["effective_level"], 2)
+        self.assertEqual((state.data["mode"], state.data["manual_level"]), ("manual", 2))
+
+    def test_step_4_from_an_old_file_returns_to_step_3(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "state.json"
+        path.write_text('{"mode": "manual", "manual_level": 4}')
+        state = ControllerState(path)
+        engine = ControllerEngine(state)
+        self.assertIsNone(state.data["max_level_return"])
+        engine.resolve(now=state.data["max_level_until"] + 1)
+        self.assertEqual((state.data["mode"], state.data["manual_level"]), ("manual", 3))
 
     def test_profile_can_be_calibrated(self):
         state, engine = self.make()

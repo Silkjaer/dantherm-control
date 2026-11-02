@@ -87,16 +87,46 @@ class FanStepTests(unittest.TestCase):
         self.assertEqual(state.data["manual_level"], 3)
         self.assertEqual(state.data["six_step_profiles"][5]["extract"], 88)
 
-    def test_manual_step_4_runs_four_hours_only_with_dantherm_steps(self):
+    def test_only_the_top_step_runs_four_hours(self):
         state = self.state()
         engine = ControllerEngine(state)
         state.configure({"mode": "manual", "manual_level": 4})
         result = engine.resolve()
-        self.assertIn("tilbage til trin 3", result["effective_reason"])
+        self.assertIn("Trin 4 (maksimum) · tilbage til", result["effective_reason"])
         self.assertGreater(state.snapshot()["max_level_remaining_seconds"], 4 * 3600 - 10)
+        # With six steps step 4 is an ordinary step.
         state.configure({"fan_step_count": 6, "manual_level": 4})
         self.assertIsNone(state.data["max_level_until"])
         self.assertEqual(engine.resolve(now=time.time() + 5 * 3600)["effective_level"], 4)
+
+    def test_six_steps_top_step_returns_after_four_hours(self):
+        state = self.state()
+        engine = ControllerEngine(state)
+        state.configure({"fan_step_count": 6, "mode": "smart_auto"})
+        state.configure({"mode": "manual", "manual_level": 6})
+        until = state.data["max_level_until"]
+        self.assertAlmostEqual(until - time.time(), 4 * 3600, delta=5)
+        result = engine.resolve(now=until - 60)
+        self.assertEqual(result["effective_level"], 6)
+        self.assertIn("Trin 6 (maksimum) · tilbage til Smart Auto", result["effective_reason"])
+        engine.resolve(now=until + 1)
+        self.assertEqual(state.data["mode"], "smart_auto")
+        self.assertIsNone(state.data["max_level_until"])
+
+    def test_top_step_keeps_its_end_across_a_step_switch(self):
+        state = self.state()
+        state.configure({"mode": "manual", "manual_level": 2})
+        state.configure({"manual_level": 4})
+        until = state.data["max_level_until"]
+        state.configure({"fan_step_count": 6})
+        # Step 4 of four (the maximum) is step 6 of six, still with its end;
+        # the step it returns to moves with the table like any step choice.
+        self.assertEqual((state.data["manual_level"], state.data["max_level_until"]), (6, until))
+        back = dict(state.data["max_level_return"])
+        self.assertEqual(back["mode"], "manual")
+        self.assertIn(back["manual_level"], (1, 2, 3))
+        ControllerEngine(state).resolve(now=until + 1)
+        self.assertEqual((state.data["mode"], state.data["manual_level"]), ("manual", back["manual_level"]))
 
     def test_vacation_may_go_below_the_auto_minimum(self):
         state = self.state()

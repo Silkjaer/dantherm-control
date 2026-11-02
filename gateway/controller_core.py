@@ -347,8 +347,10 @@ class ControllerState:
         # Measured airflow of the step control not in use (it belongs to its steps).
         "airflow_measured_4": {},
         "airflow_measured_6": {},
-        # Four steps: step 4 chosen by hand runs for MAX_LEVEL_HOURS, then step 3.
+        # The top step (4 or 6) chosen by hand runs for MAX_LEVEL_HOURS, then
+        # returns to what ran before ({"mode", "manual_level"}), else step 3.
         "max_level_until": None,
+        "max_level_return": None,
         # What the upgrade from six steps kept.
         "fan_steps_migration": None,
         "effective_source": "local_auto",
@@ -443,11 +445,14 @@ class ControllerState:
             max_until = float(self.data["max_level_until"]) if self.data.get("max_level_until") else None
         except (TypeError, ValueError):
             max_until = None
-        if self.dantherm_steps() and self.data["mode"] == "manual" and self.data["manual_level"] == MAX_LEVEL:
-            # Step 4 by hand always has an end, also for files without one.
+        if self.data["mode"] == "manual" and self.data["manual_level"] == self.max_level():
+            # The top step by hand always has an end, also for files without one.
             self.data["max_level_until"] = max_until or time.time() + MAX_LEVEL_HOURS * 3600
         else:
             self.data["max_level_until"] = None
+        back = self.data.get("max_level_return")
+        if not self.data["max_level_until"] or not isinstance(back, dict) or back.get("mode") not in VALID_MODES:
+            self.data["max_level_return"] = None
         if self.data["bypass"] not in VALID_BYPASS:
             self.data["bypass"] = "off"
         if self.data["fireplace"] and self.data["bypass"] == "on":
@@ -808,7 +813,16 @@ class ControllerState:
         if old_top_air:
             self.data["air_quality_max_level"] = count
         self.data["local_min_level"] = min(self.data["local_min_level"], self.data["local_max_level"])
-        self.data["max_level_until"] = None
+        if self.data["mode"] == "manual" and self.data["manual_level"] == count:
+            # The top step by hand keeps its end across the switch, or gets one.
+            self.data["max_level_until"] = self.data.get("max_level_until") or time.time() + MAX_LEVEL_HOURS * 3600
+            back = self.data.get("max_level_return")
+            if isinstance(back, dict) and back.get("manual_level") is not None:
+                back["manual_level"] = fan_steps.remap_levels(
+                    {"manual_level": back["manual_level"]}, old_profiles, self.data["profiles"])["manual_level"]
+        else:
+            self.data["max_level_until"] = None
+            self.data["max_level_return"] = None
 
     def _rebalance(self, *, strict: bool = False) -> bool:
         """Build the four steps from the commissioning, balanced if chosen.
@@ -940,6 +954,7 @@ class ControllerState:
                     raise ControllerError("Trinstyring skal være 4 eller 6 trin") from error
             top = self.max_level()
             was_max = self.data["mode"] == "manual" and self.data["manual_level"] == top
+            before = {"mode": self.data["mode"], "manual_level": self.data["manual_level"]}
             if "mode" in patch:
                 if patch["mode"] not in VALID_MODES:
                     raise ControllerError("Ugyldig controller-mode")
@@ -950,10 +965,12 @@ class ControllerState:
                     if not 1 <= value <= top:
                         raise ControllerError(f"{key} skal være 1..{top}")
                     self.data[key] = value
-            if self.dantherm_steps() and self.data["mode"] == "manual" and self.data["manual_level"] == MAX_LEVEL and (
+            if self.data["mode"] == "manual" and self.data["manual_level"] == self.max_level() and (
                     not was_max or "manual_level" in patch):
-                # Choosing step 4 (again) starts its four hours.
+                # Choosing the top step (again) starts its four hours.
                 self.data["max_level_until"] = time.time() + MAX_LEVEL_HOURS * 3600
+                if not was_max:
+                    self.data["max_level_return"] = before
             for key, low, high in (
                 ("rh_setpoint", 25.0, 80.0), ("rh_hysteresis", 1.0, 10.0),
                 ("bathroom_rh_setpoint", 35.0, 90.0), ("bathroom_rh_hysteresis", 1.0, 20.0),
@@ -1441,7 +1458,12 @@ class ControllerState:
             self.save()
 
     def _expire_max_level(self, now: float | None = None) -> None:
-        """Step 4 chosen by hand returns to step 3, like the HCP4 panel."""
+        """The top step chosen by hand ends after MAX_LEVEL_HOURS.
+
+        It returns to what ran before: Auto, Smart Auto or the manual step.
+        Without that (an old file), it goes to step 3, like step 4 on the
+        HCP4 panel.
+        """
         now = now or time.time()
         until = self.data.get("max_level_until")
         if until is None:
@@ -1451,9 +1473,18 @@ class ControllerState:
         except (TypeError, ValueError):
             active_until = 0.0
         if active_until <= now:
-            if self.dantherm_steps() and self.data["mode"] == "manual" and self.data["manual_level"] == MAX_LEVEL:
-                self.data["manual_level"] = NOMINAL_LEVEL
+            if self.data["mode"] == "manual" and self.data["manual_level"] == self.max_level():
+                back = self.data.get("max_level_return") or {}
+                level = back.get("manual_level")
+                if back.get("mode") in ("local_auto", "smart_auto"):
+                    self.data["mode"] = back["mode"]
+                    self.data["manual_level"] = NOMINAL_LEVEL
+                elif isinstance(level, int) and 1 <= level < self.max_level():
+                    self.data["manual_level"] = level
+                else:
+                    self.data["manual_level"] = NOMINAL_LEVEL
             self.data["max_level_until"] = None
+            self.data["max_level_return"] = None
             self.data["updated_at"] = now
             self.save()
 
@@ -1953,9 +1984,12 @@ class ControllerEngine:
             d = self.config.data
             if d["mode"] == "manual":
                 source, level, reason = "manual", int(d["manual_level"]), "Manuelt valgt niveau"
-                if self.config.dantherm_steps() and level == MAX_LEVEL and d.get("max_level_until"):
+                if level == self.config.max_level() and d.get("max_level_until"):
                     remaining = max(0, math.ceil((float(d["max_level_until"]) - now) / 60))
-                    reason = f"Trin 4 (maksimum) · tilbage til trin 3 om ca. {remaining} min"
+                    back = d.get("max_level_return") or {}
+                    target = ({"local_auto": "Auto", "smart_auto": "Smart Auto"}.get(back.get("mode"))
+                              or f"trin {back.get('manual_level') or NOMINAL_LEVEL}")
+                    reason = f"Trin {level} (maksimum) · tilbage til {target} om ca. {remaining} min"
             elif d["mode"] == "smart_auto":
                 seen = d.get("ha_last_seen")
                 lease = min(int(d["ha_timeout_seconds"]), int(d.get("ha_valid_for_seconds", d["ha_timeout_seconds"])))
