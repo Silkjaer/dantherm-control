@@ -269,7 +269,6 @@ export function OverviewPage() {
   const t2Difference = number(controller.afterheat_lift);
   const t2NeedsCheck = heatKnown && !heating && t2Difference !== null && t2Difference >= 0.5;
 
-  const levelPatch = mode === "manual" ? "manual_level" : "local_normal_level";
   const levels = levelList(controller);
   const dantherm = stepCount(controller) === 4;
   // Remote-style range: OFF - 10 - 11 ... 35. Minus below 10 selects OFF.
@@ -399,7 +398,7 @@ export function OverviewPage() {
                 : <div className={`ha-warning tone-${haInfo.tone}`} role="status"><strong>Home Assistant: {haInfo.label}</strong><span>{haInfo.detail}</span></div>)}
               <label className="control-label">{dantherm ? "Ventilatortrin · Dantherm 4 trin" : "Ventilatorniveau"}</label>
               <div className="pro-levels with-off" style={{ "--levels": levels.length } as CSSProperties}>
-                {levels.map(value => <button key={value} title={`Trin ${value}${dantherm ? ` · ${LEVEL_NAMES[value].da}` : ""}${value === levels.length ? ` (${MAX_LEVEL_HOURS} timer, derefter som før)` : ""}`} className={!standbyActive && level === value ? "active" : ""} disabled={busy !== null} onClick={() => void command(`level-${value}`, standbyActive ? { standby_minutes: 0, [levelPatch]: value } : { [levelPatch]: value }, standbyActive ? `Anlægget er tændt på trin ${value}.` : `Ventilation sat til trin ${value}.`)}>{value}</button>)}
+                {levels.map(value => <button key={value} title={`Trin ${value}${dantherm ? ` · ${LEVEL_NAMES[value].da}` : ""}${value === levels.length ? ` (${MAX_LEVEL_HOURS} timer, derefter som før)` : ""}`} className={!standbyActive && level === value ? "active" : ""} disabled={busy !== null} onClick={() => void command(`level-${value}`, { ...(standbyActive ? { standby_minutes: 0 } : {}), mode: "manual", manual_level: value }, standbyActive ? `Anlægget er tændt på trin ${value}.` : `Ventilation sat til manuelt trin ${value}.`)}>{value}</button>)}
                 <button className={`level-off${standbyActive ? " active" : ""}`} aria-haspopup="dialog" aria-pressed={standbyActive} disabled={busy !== null} onClick={() => setStandbyDialog(true)}>OFF</button>
               </div>
               <div className="active-decision"><span>Aktiv beslutning</span><strong>{standbyActive ? "OFF · anlæg slukket" : `Trin ${whole(level)} · ${text(controller.effective_source).replaceAll("_", " ")}`}</strong><small>{text(controller.effective_reason, "Afventer controllerens beslutning")}</small></div>
