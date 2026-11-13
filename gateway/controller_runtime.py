@@ -205,6 +205,8 @@ class ControllerRuntime:
         )
         self.engine.set_external({
             "extract_temp": extract_temp,
+            # The unit's own supply sensor (T2): the bypass closes when it runs cold.
+            "supply_temp": self._safe_number(fresh_sensor_value(state, "supply_temp"), -30, 60),
             "outdoor_rh": self._outdoor_humidity(),
             "afterheat_room_temperature": room_temperature,
             "stove_temperature": self._source_value(self.config.data.get("fireplace_auto_source"), "temperature"),

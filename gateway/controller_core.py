@@ -48,6 +48,11 @@ VALID_QUICK_BOOST_MINUTES = {0, 15, 30, 60}
 # Cool: bypass open and the top step for a while, then back to normal.
 VALID_COOL_BOOST_MINUTES = {0, 30, 60, 120}
 COOL_BOOST_AFTERHEAT_SETPOINT = 10
+# The HCH5 stops both fans, and keeps them stopped until it loses power, when
+# the air it blows in stays below about 5 °C. With the bypass open that air is
+# outdoor air, so the bypass gives up once it has been below 6 °C for a minute.
+BYPASS_SUPPLY_FLOOR_C = 6.0
+BYPASS_SUPPLY_FLOOR_SECONDS = 60
 VALID_AFTERHEAT_COILS = {"electric", "water"}
 # Bonfire in the garden: the unit is switched off (standby pattern) for the
 # chosen time so no smoke is drawn in, then starts again by itself.
@@ -1612,6 +1617,8 @@ class ControllerEngine:
         self.cooling_last_on_at: float | None = None
         self.cooling_last_off_at: float | None = None
         self.cooling_reason = "disabled"
+        self.cold_supply_since: float | None = None
+        self.bypass_closed_cold_at: float | None = None
         self.last_applied: dict[str, object] = {}
         self.last_applied_at: dict[str, float] = {}
         self.last_write_at: float | None = None
@@ -1731,6 +1738,16 @@ class ControllerEngine:
         self.cooling_active = False
         self.cooling_qualifying_since = None
         self.cooling_reason = reason
+
+    def _supply_too_cold(self, now_ts: float) -> bool:
+        """Supply air (T2) below the floor for a minute while the bypass is open."""
+        supply = self.external.get("supply_temp")
+        if not isinstance(supply, (int, float)) or supply >= BYPASS_SUPPLY_FLOOR_C:
+            self.cold_supply_since = None
+            return False
+        if self.cold_supply_since is None:
+            self.cold_supply_since = now_ts
+        return now_ts - self.cold_supply_since >= BYPASS_SUPPLY_FLOOR_SECONDS
 
     def _automation_overlay(self, level: int, source: str, reason: str, now_ts: float) -> tuple[int, str, str, str, dict[str, bool]]:
         d = self.config.data
@@ -1893,6 +1910,23 @@ class ControllerEngine:
             remaining = max(1, math.ceil((float(cool_until) - now_ts) / 60))
             reason = f"Køl · bypass åben · trin {top} · ca. {remaining} min tilbage"
 
+        if effective_bypass != "on":
+            self.cold_supply_since = None
+        elif self._supply_too_cold(now_ts):
+            # Whatever opened the bypass ends: a hold or Køl is cancelled and
+            # free cooling stops, so nothing opens it again by itself.
+            if d["bypass"] == "on" or flags["cool_boost_active"]:
+                d["bypass"] = "off"
+                d["cool_boost_until"], d["cool_boost_minutes"] = None, 0
+                d["updated_at"] = now_ts
+                self.config.save()
+            if flags["cooling_active"]:
+                flags["cooling_active"] = False
+                self._stop_cooling(now_ts, "supply_too_cold")
+            self.bypass_closed_cold_at = now_ts
+            effective_bypass = "off"
+            reason = f"{reason}; bypass lukket: indblæsningen var under {BYPASS_SUPPLY_FLOOR_C:.0f} °C"
+
         if d.get("fireplace"):
             effective_bypass = "off"
         # The Auto limits are for automatic control: a step chosen by hand is
@@ -2035,6 +2069,8 @@ class ControllerEngine:
             result = {
                 **self.config.snapshot(),
                 "measurements": dict(self.measurements),
+                "bypass_supply_floor_c": BYPASS_SUPPLY_FLOOR_C,
+                "bypass_closed_cold_at": self.bypass_closed_cold_at,
                 "effective_profile": dict(profile) if profile else None,
                 "effective_bypass": effective_bypass,
                 **flags,

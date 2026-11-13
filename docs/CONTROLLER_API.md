@@ -78,6 +78,8 @@ At most 32 rooms are accepted. Invalid metadata or out-of-range measurements ret
 
 Leased external switches, machine token required. Today only `fireplace`: while `true` and *Automatic fireplace mode* is enabled in the WebUI, the Pi holds the unit's fireplace mode (bypass closed) and keeps it for the configured afterrun after the signal ends. The lease (`valid_for_s`, 30–900 s, default 300) must be renewed; an expired lease counts as `false`.
 
+Bypass and cold supply air: whenever the bypass is open (a hold, *Køl* or free cooling) and the unit's supply sensor (T2) has read below 6 °C for a minute, the Pi closes the bypass. A hold or *Køl* is cancelled and free cooling stops with reason `supply_too_cold`; nothing reopens it by itself. The HCH5 stops both fans when its supply air stays below about 5 °C and keeps them stopped until it loses power. The state reports `bypass_supply_floor_c` and `bypass_closed_cold_at` (epoch seconds of the last such close).
+
 ```json
 {"fireplace":true,"valid_for_s":300}
 ```

@@ -184,6 +184,45 @@ class ControllerTests(unittest.TestCase):
         state.path.write_text('{"bypass": "auto"}')
         self.assertEqual(ControllerState(state.path).data["bypass"], "off")
 
+    def test_bypass_closes_after_a_minute_of_supply_air_below_6_c(self):
+        state, engine = self.make()
+        state.configure({"bypass": "on"})
+        engine.set_external({"supply_temp": 4.6})
+        self.assertEqual(engine.resolve(now=1000)["effective_bypass"], "on")
+        self.assertEqual(engine.resolve(now=1059)["effective_bypass"], "on")
+        result = engine.resolve(now=1060)
+        self.assertEqual(result["effective_bypass"], "off")
+        self.assertEqual(result["bypass_closed_cold_at"], 1060)
+        self.assertIn("bypass lukket", result["effective_reason"])
+        # The hold is cancelled for good: warm air does not open it again.
+        self.assertEqual(ControllerState(state.path).data["bypass"], "off")
+        engine.set_external({"supply_temp": 12.0})
+        self.assertEqual(engine.resolve(now=1200)["effective_bypass"], "off")
+
+    def test_bypass_stays_open_above_the_floor_and_a_short_dip_restarts_the_clock(self):
+        state, engine = self.make()
+        state.configure({"bypass": "on"})
+        engine.set_external({"supply_temp": 6.0})
+        self.assertEqual(engine.resolve(now=1000)["effective_bypass"], "on")
+        engine.set_external({"supply_temp": 5.5})
+        engine.resolve(now=1010)
+        engine.set_external({"supply_temp": 6.5})
+        engine.resolve(now=1050)
+        engine.set_external({"supply_temp": 5.5})
+        self.assertEqual(engine.resolve(now=1100)["effective_bypass"], "on")
+        self.assertEqual(engine.resolve(now=1160)["effective_bypass"], "off")
+
+    def test_cold_supply_also_ends_cool(self):
+        state, engine = self.make()
+        state.configure({"cool_boost_minutes": 30})
+        engine.set_external({"supply_temp": 3.0})
+        start = time.time()
+        self.assertEqual(engine.resolve(now=start)["effective_bypass"], "on")
+        result = engine.resolve(now=start + 60)
+        self.assertEqual(result["effective_bypass"], "off")
+        self.assertIsNone(state.data["cool_boost_until"])
+        self.assertNotEqual(engine.resolve(now=start + 61)["effective_source"], "cool_boost")
+
     def test_bypass_and_fireplace_are_mutually_exclusive(self):
         state, _ = self.make()
         state.configure({"bypass": "on"})
