@@ -1089,6 +1089,8 @@ class ControllerRuntime:
             "actual_fan_supply_percent": self._first(self.gateway_state, "fan_supply_percent", "supply_fan_percent"),
             "actual_fan_extract_rpm": self._first(self.gateway_state, "fan_extract_rpm", "extract_fan_rpm"),
             "actual_fan_supply_rpm": self._first(self.gateway_state, "fan_supply_rpm", "supply_fan_rpm"),
+            "actual_unit_frost_protection": self.gateway_state.get("unit_frost_protection") is True,
+            "actual_unit_frost_supply_percent": self.gateway_state.get("unit_frost_supply_percent"),
             "actual_bypass": self._first(self.gateway_state, "bypass_active"),
             "actual_bypass_raw": self._first(self.gateway_state, "bypass_raw"),
             "actual_bypass_request": self._first(self.gateway_state, "bypass_request"),
