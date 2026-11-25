@@ -21,6 +21,7 @@ from advanced_control import absolute_humidity, fan_curve, fit_fan_curve, side_c
 from air_balance import HeatBalanceLearner, adopt, balance_from_temperatures, summarize, window_record
 from onewire_extras import OneWireExtras
 from diagnostics import Diagnostics
+from hac1_presence import Hac1Presence
 from controller_core import AFTERHEAT_OUTDOOR_CUTOFF_C, ControllerEngine, ControllerError, ControllerState, HardwareAdapter
 from master_arbitration import MasterArbitrator, RtuFrameStream
 from sensor_freshness import fresh_control_input, fresh_sensor_value, sensor_sample_age
@@ -940,6 +941,24 @@ class ControllerRuntime:
         fresh = self.unit_power_until is not None and now <= self.unit_power_until
         return self.unit_power_w if fresh else None
 
+    def _balance_t2(self) -> tuple[float | None, str | None]:
+        """Supply air between the core and the afterheat coil, and its source.
+
+        A 1-Wire sensor with the "t2" role always comes first. Without HAC1
+        there is no afterheat coil and nothing feeds T2AH into the unit's T2
+        register, so the unit's own supply sensor reads the air leaving the
+        core. With HAC1, or before the bus has shown whether it is there, the
+        unit's T2 may only repeat T2AH and is not used.
+        """
+        onewire = self.onewire.by_role("t2")
+        if onewire is not None:
+            return onewire, "onewire_t2"
+        if self.gateway_state.get("hac1_presence") == Hac1Presence.ABSENT:
+            unit = self._safe_number(fresh_sensor_value(self.gateway_state, "supply_temp"), -30, 60)
+            if unit is not None:
+                return unit, "unit_t2"
+        return None, None
+
     def _observe_balance(self, now: float | None = None) -> None:
         """Feed the heat-balance learner and keep what it finds."""
         now = time.time() if now is None else now
@@ -953,7 +972,7 @@ class ControllerRuntime:
             blocked = "Pejsefunktionen er aktiv"
         sample = {
             "t1": self._safe_number(self._first(state, "outdoor_temp", "outdoor_temperature"), -50, 60),
-            "t2": self.onewire.by_role("t2"),
+            "t2": self._balance_t2()[0],
             "t3": self._safe_number(self._first(state, "extract_temp", "extract_temperature"), -30, 60),
             "t4": self._safe_number(self._first(state, "exhaust_temp", "exhaust_temperature"), -50, 60),
             "rh": self.engine.measurements.get("rh"),
@@ -998,7 +1017,7 @@ class ControllerRuntime:
         t1 = self._safe_number(self._first(state, "outdoor_temp", "outdoor_temperature"), -50, 60)
         t3 = self._safe_number(self._first(state, "extract_temp", "extract_temperature"), -30, 60)
         t4 = self._safe_number(self._first(state, "exhaust_temp", "exhaust_temperature"), -50, 60)
-        t2 = self.onewire.by_role("t2")
+        t2, t2_source = self._balance_t2()
         supply_rpm = self._safe_number(self._first(state, "fan_supply_rpm", "supply_fan_rpm"), 0, 6000)
         extract_rpm = self._safe_number(self._first(state, "fan_extract_rpm", "extract_fan_rpm"), 0, 6000)
         k = side_constants(self.config.data)
@@ -1009,6 +1028,7 @@ class ControllerRuntime:
                 supply_m3h=float(k["supply"]) * supply_rpm, extract_m3h=float(k["extract"]) * extract_rpm,
                 power_w=self._unit_power(), idle_w=self.balance_learner.idle_power_w,
             )
+        live["t2_source"] = t2_source
         live["delta_t_now"] = round(t3 - t1, 1) if t1 is not None and t3 is not None else None
         live["excess_now_percent"] = round((1.0 / float(now_result["airflow_ratio"]) - 1.0) * 100.0, 1) if now_result else None
         live["duct_ratio_now"] = round(float(now_result["duct_ratio"]), 3) if now_result else None

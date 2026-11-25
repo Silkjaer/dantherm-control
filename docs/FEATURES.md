@@ -36,7 +36,7 @@ Features that depend on Home Assistant, a power meter or extra sensors are marke
 ## Airflow design and balancing
 
 - House-size settings use heated area, ceiling height and wet rooms to calculate a design airflow and suggested base level. Fan airflow estimates improve with measured fan RPM and commissioning data.
-- Automatic air balance aims for a configurable extract-air share above supply air. Measured supply/extract airflow takes priority; otherwise the controller can learn a duct ratio from suitable heat-exchanger measurements when a T2 sensor is fitted.
+- Automatic air balance aims for a configurable extract-air share above supply air. Measured supply/extract airflow takes priority; otherwise the controller can learn a duct ratio from suitable heat-exchanger measurements. That needs T2 between the core and the afterheat coil: a 1-Wire sensor with the T2 role, or on a unit without HAC1 the unit's own supply sensor.
 - The **Indregulering** page records rooms, valve types, areas and design supply/extract airflow. A technician can hold a fan level while measuring each valve in l/s, compare deviations, store measured totals and produce a printable report saved on the Pi.
 - An overpressure alarm can be raised when the known or learned duct balance shows excess supply outside fireplace mode.
 

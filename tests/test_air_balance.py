@@ -1,6 +1,7 @@
 import math
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -276,7 +277,8 @@ class HeatBalanceTests(unittest.TestCase):
 
 
 class RuntimeBalanceTests(unittest.TestCase):
-    def test_runtime_learns_the_duct_ratio_and_rebalances(self):
+    def make_house(self):
+        """Runtime on a unit whose supply ducts move 15 % more air per rpm than extract."""
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         gateway = {"bus_traffic": False}
@@ -284,12 +286,10 @@ class RuntimeBalanceTests(unittest.TestCase):
                                     state_path=Path(temp.name) / "controller.json")
         runtime.change_log_path = Path(temp.name) / "change-log.jsonl"
         runtime.configure({**HOUSE, "balance_enabled": True}, apply=False)
-        equal = {level: values["supply"] for level, values in runtime.config.data["profiles"].items()}
         level = runtime.config.data["profiles"][3]
         curve = {"rpm_at_0": 557.0, "rpm_per_percent": 24.0}
         supply_rpm, extract_rpm = rpm_at_percent(level["supply"], curve), rpm_at_percent(level["extract"], curve)
         k = side_constants(runtime.config.data)
-        # The real ducts: supply moves 15 % more air per rpm than extract.
         supply_m3h = float(k["supply"]) * supply_rpm
         extract_m3h = supply_m3h / 1.15 * extract_rpm / supply_rpm
         fans = fan_powers(supply_rpm, extract_rpm, None)
@@ -298,13 +298,25 @@ class RuntimeBalanceTests(unittest.TestCase):
         gateway.update(outdoor_temp=7.0, extract_temp=18.0, exhaust_temp=t4, humidity=40.0,
                        fan_supply_percent=level["supply"], fan_extract_percent=level["extract"],
                        fan_supply_rpm=supply_rpm, fan_extract_rpm=extract_rpm, bypass_active=False)
-        runtime.onewire.by_role = lambda role: t2 if role == "t2" else None
+        runtime.onewire.by_role = lambda role: None
         runtime.refresh_measurements()
+        return runtime, gateway, t2
+
+    @staticmethod
+    def run_two_nights(runtime, gateway):
         start = 1_790_460_000.0  # 23:00 local time
         for night in range(2):
             now = start + night * 86400
             for step in range(0, 4 * 3600, 5):
+                # A unit T2 counts only while the bus keeps reading it.
+                gateway["supply_temperature_sample_monotonic"] = time.monotonic()
                 runtime._observe_balance(now + step)
+
+    def test_runtime_learns_the_duct_ratio_and_rebalances(self):
+        runtime, gateway, t2 = self.make_house()
+        equal = {level: values["supply"] for level, values in runtime.config.data["profiles"].items()}
+        runtime.onewire.by_role = lambda role: t2 if role == "t2" else None
+        self.run_two_nights(runtime, gateway)
         learned = runtime.config.data["balance_learned"]
         self.assertEqual(learned["confidence"], "ok")
         self.assertAlmostEqual(learned["ratio"], 1.15, delta=0.03)
@@ -316,6 +328,39 @@ class RuntimeBalanceTests(unittest.TestCase):
         self.assertIn(snapshot["balance_live"]["state"], ("settling", "measuring", "measured"))
         self.assertIsNotNone(snapshot["balance_running_excess_percent"])
         self.assertNotIn("windows", snapshot["balance_learned"])
+
+    def test_without_hac1_the_units_own_t2_is_used(self):
+        runtime, gateway, t2 = self.make_house()
+        gateway.update(hac1_presence="absent", supply_temp=t2)
+        self.run_two_nights(runtime, gateway)
+        learned = runtime.config.data["balance_learned"]
+        self.assertEqual(learned["confidence"], "ok")
+        self.assertAlmostEqual(learned["ratio"], 1.15, delta=0.03)
+        self.assertEqual(runtime._balance_live()["t2_source"], "unit_t2")
+
+    def test_the_units_t2_is_not_used_with_hac1_or_before_it_is_known(self):
+        runtime, gateway, t2 = self.make_house()
+        for presence in ("present", "unknown", None):
+            with self.subTest(presence=presence):
+                gateway.update(hac1_presence=presence, supply_temp=t2,
+                               supply_temperature_sample_monotonic=time.monotonic())
+                self.assertEqual(runtime._balance_t2(), (None, None))
+                runtime._observe_balance(1_790_460_000.0)
+                self.assertEqual(runtime.balance_learner.status["state"], "off")
+                self.assertIn("Ingen T2-føler", runtime.balance_learner.status["reason"])
+
+    def test_a_1wire_t2_comes_before_the_units_own(self):
+        runtime, gateway, _ = self.make_house()
+        gateway.update(hac1_presence="absent", supply_temp=30.0,
+                       supply_temperature_sample_monotonic=time.monotonic())
+        runtime.onewire.by_role = lambda role: 18.5 if role == "t2" else None
+        self.assertEqual(runtime._balance_t2(), (18.5, "onewire_t2"))
+
+    def test_a_unit_t2_the_bus_stopped_reading_is_not_used(self):
+        runtime, gateway, t2 = self.make_house()
+        gateway.update(hac1_presence="absent", supply_temp=t2,
+                       supply_temperature_sample_monotonic=time.monotonic() - 120.0)
+        self.assertEqual(runtime._balance_t2(), (None, None))
 
 
 class OverpressureAlarmTests(unittest.TestCase):

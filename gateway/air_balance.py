@@ -8,8 +8,9 @@ The sensible heat the extract air gives off is the heat the supply air takes up:
 so the ratio of the two temperature changes is the ratio of the airflows,
 without an airflow meter. Divided by the ratio of the fan speeds it gives the
 duct ratio k_supply/k_extract that the air balance needs (advanced_control).
-T2 must be measured between the core and the afterheat coil (a 1-Wire sensor
-with the role "t2"); the unit's own T2 register only repeats T2AH.
+T2 must be measured between the core and the afterheat coil: a 1-Wire sensor
+with the role "t2", or on a unit without HAC1 (no afterheat coil) the unit's
+own T2. With HAC1 the unit's T2 register only repeats T2AH.
 
 What spoils the balance, and what is done about it:
 - Fan heat. Both HCH5 fans sit at the cold end, and their electrical power
