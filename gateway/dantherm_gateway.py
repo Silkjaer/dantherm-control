@@ -770,8 +770,9 @@ class Gateway:
                 elif action == "fan_pair":
                     extract, supply = value
                     self.write_pair(ser, int(extract), int(supply))
+                    self.written_fan_pair = (int(extract), int(supply))
                     actual = self.read_fan_pair(ser)
-                    if actual != (int(extract), int(supply)):
+                    if actual != (int(extract), int(supply)) and not self.update_unit_frost_protection(actual):
                         raise RuntimeError(f"fan readback mismatch: {actual}")
                     self.publish("fan_extract_percent", actual[0])
                     self.publish("fan_supply_percent", actual[1])
@@ -1752,6 +1753,30 @@ class Gateway:
         if ser.in_waiting:
             self.serial_read(ser, ser.in_waiting)
 
+    def update_unit_frost_protection(self, actual: tuple[int, int] | None) -> bool:
+        """Recognise the unit's own frost protection and report it, not fight it.
+
+        When the exchanger risks icing, the HCH5 lowers the supply fan below the
+        value the Pi wrote and keeps the extract fan. That is the unit defrosting,
+        not a failed write: the Pi shows it and leaves the unit alone.
+        Returns True while that is what the readback shows.
+        """
+        written = getattr(self, "written_fan_pair", None)
+        active = (
+            actual is not None and written is not None
+            and actual[0] == written[0] and actual[1] < written[1]
+        )
+        was_active = self.state.get("unit_frost_protection") is True
+        if active != was_active:
+            if active:
+                LOG.info("The unit's frost protection lowers the supply fan to %s %% (Pi wants %s %%)",
+                         actual[1], written[1])
+            else:
+                LOG.info("The unit's frost protection has ended (supply fan back at the Pi's value)")
+        self.publish("unit_frost_protection", active)
+        self.publish("unit_frost_supply_percent", actual[1] if active else None)
+        return active
+
     def write_pair(self, ser: serial.Serial, extract: int, supply: int):
         # Samme rækkefølge som observeret fra HAC1.
         self.write_one(ser, 67, supply)
@@ -2115,6 +2140,7 @@ class Gateway:
         if fan_pair is not None:
             self.publish("fan_extract_percent", fan_pair[0])
             self.publish("fan_supply_percent", fan_pair[1])
+            self.update_unit_frost_protection(fan_pair)
         if temperatures is not None:
             for legacy_key, canonical_key, raw in zip(
                 ("outdoor_temp", "supply_temp", "extract_temp", "exhaust_temp"),
