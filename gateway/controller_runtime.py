@@ -1058,12 +1058,12 @@ class ControllerRuntime:
         result["co2_raw"] = self.gateway_state.get("co2_raw")
         result["co2_measured"] = self.gateway_state.get("co2")
         writes_allowed = self.master.writes_allowed()
-        # T2 before the afterheat coil is only a real measurement from a 1-Wire
-        # sensor with the "t2" role. The unit's own T2 register just repeats
-        # T2AH (fed like HCP4 did), so it is not reported as before-coil air.
+        # T2 before the afterheat coil: a 1-Wire sensor with the "t2" role, or
+        # on a unit without HAC1 (no coil) the unit's own T2. With HAC1 the
+        # unit's T2 register just repeats T2AH (fed like HCP4 did), so it is
+        # not reported as before-coil air.
         onewire_sensors = self.onewire.sensors()
-        before_heater = self.onewire.by_role("t2")
-        before_source = "onewire_t2" if before_heater is not None else None
+        before_heater, before_source = self._balance_t2()
         sample_age = None
         after_heater = fresh_sensor_value(self.gateway_state, "heating_coil_after_temperature")
         frost_temperature = fresh_sensor_value(self.gateway_state, "heating_coil_frost_temperature")
