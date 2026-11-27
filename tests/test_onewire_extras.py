@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "gateway"))
 
 from controller_core import ControllerError, HardwareAdapter
 from controller_runtime import ControllerRuntime
+from hac1_presence import Hac1Presence
 from onewire_extras import OneWireExtras, clean_roles, read_ds18b20
 
 
@@ -85,6 +86,28 @@ class MeasuredT2Tests(unittest.TestCase):
         snapshot = runtime.snapshot()
         self.assertIsNone(snapshot["actual_supply_before_heater_temperature"])
         self.assertAlmostEqual(snapshot["actual_supply_before_heater_estimate"], 19.8, places=1)
+
+    def unit_without_coil(self, presence):
+        return self.make_runtime({
+            "hac1_presence": presence, "supply_temp": 19.7, "supply_temperature_sample_monotonic": time.monotonic(),
+            "outdoor_temp": 3.6, "extract_temp": 24.7, "exhaust_temp": 7.4, "bypass_active": False})
+
+    def test_without_hac1_the_units_t2_is_the_air_after_the_core(self):
+        runtime = self.unit_without_coil(Hac1Presence.ABSENT)
+        runtime.onewire.by_role = lambda role, now=None: None
+        snapshot = runtime.snapshot()
+        self.assertEqual(snapshot["actual_supply_before_heater_temperature"], 19.7)
+        self.assertEqual(snapshot["actual_supply_before_heater_temperature_source"], "unit_t2")
+        self.assertAlmostEqual(snapshot["supply_recovery_percent"], 76.3, places=1)
+
+    def test_with_hac1_or_before_it_is_known_the_units_t2_is_not_before_coil(self):
+        for presence in (Hac1Presence.PRESENT, Hac1Presence.UNKNOWN):
+            with self.subTest(presence=presence):
+                runtime = self.unit_without_coil(presence)
+                runtime.onewire.by_role = lambda role, now=None: None
+                snapshot = runtime.snapshot()
+                self.assertIsNone(snapshot["actual_supply_before_heater_temperature"])
+                self.assertIsNone(snapshot["supply_recovery_percent"])
 
     def test_measured_t2_from_onewire_role(self):
         runtime = self.make_runtime({})

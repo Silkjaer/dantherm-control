@@ -633,11 +633,12 @@ export function Hch5UnitDiagram(props:Hch5UnitDiagramProps) {
       </g>}
       <TempPort cx={1112} cy={rearFarY(205)} title="Udeluft · T1" value={fmt(outdoor)} tone="cold" sensor="outdoor" onClick={onTemperatureClick}/>
       <TempPort cx={1112} cy={rearFarY(365)} title="Afkast · T4" value={fmt(exhaust)} tone="warm" sensor="exhaust" onClick={onTemperatureClick}/>
-      <TempPort cx={-150} cy={205} title="Udsugning · T3" value={fmt(extract)} tone="warm" sensor="extract" onClick={onTemperatureClick}/>
-      <TempPort cx={-150} cy={365} title={afterheat ? "Indblæsning · T2AH" : "Indblæsning · T2"} value={fmt(afterHeater)} tone="green" sensor="afterHeater" onClick={onTemperatureClick}/>
+      <TempPort cx={-150} cy={205} title="Fraluft · T3" value={fmt(extract)} tone="warm" sensor="extract" onClick={onTemperatureClick}/>
+      <TempPort cx={-150} cy={365} title={afterheat ? "Tilluft · T2AH" : "Tilluft · T2"} value={fmt(afterHeater)} tone="green" sensor="afterHeater" onClick={onTemperatureClick}/>
       {afterheat && <SensorPin x={57} y={292} label="Frost" value={fmt(frost,"°")} sensor="frost" onClick={onTemperatureClick}/>}
-      {/* T2 on the supply duct between the unit and the afterheat coil. */}
-      {(beforeHeater !== null || beforeHeaterEstimate !== null) && <SensorPin x={150} y={331} lift={38} width={92} label={beforeHeater !== null ? t2Corrected ? "T2 · korr." : "T2 · målt" : "T2 · beregnet"} value={fmt(beforeHeater ?? beforeHeaterEstimate,"°")} sensor="beforeHeater" onClick={onTemperatureClick}/>}
+      {/* T2 on the supply duct between the unit and the afterheat coil. Without a
+          coil that is the supply air itself, already shown as "Tilluft · T2". */}
+      {afterheat && (beforeHeater !== null || beforeHeaterEstimate !== null) && <SensorPin x={150} y={331} lift={38} width={92} label={beforeHeater !== null ? t2Corrected ? "T2 · korr." : "T2 · målt" : "T2 · beregnet"} value={fmt(beforeHeater ?? beforeHeaterEstimate,"°")} sensor="beforeHeater" onClick={onTemperatureClick}/>}
       {afterheat && <g className="hch-water-callout" transform="translate(-236 414)"><rect width="196" height="110" rx="12"/><text className="water-title" x="14" y="24">{water ? "Vandvarmeflade" : "Eftervarmevand"}</text>
         <g className="hch-water-reading" role="button" tabIndex={0} aria-label={`Frem: ${fmt(flowWater)}, vis 24 timers graf`} onClick={() => onTemperatureClick?.("flowWater")} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onTemperatureClick?.("flowWater"); } }}><rect x="8" y="31" width="180" height="23" rx="5"/><text className="water-value" x="14" y="48">Frem <tspan x="184" textAnchor="end">{fmt(flowWater)}</tspan></text></g>
         <g className="hch-water-reading" role="button" tabIndex={0} aria-label={`Retur: ${fmt(returnWater)}, vis 24 timers graf`} onClick={() => onTemperatureClick?.("returnWater")} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onTemperatureClick?.("returnWater"); } }}><rect x="8" y="57" width="180" height="23" rx="5"/><text className="water-value" x="14" y="74">Retur <tspan x="184" textAnchor="end">{fmt(returnWater)}</tspan></text></g>

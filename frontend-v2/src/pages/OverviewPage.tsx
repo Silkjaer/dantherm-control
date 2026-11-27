@@ -23,7 +23,7 @@ type AfterheatValue = number | "off";
 type AuthState = { csrf?: string | null };
 const SENSOR_HISTORY: Record<string, { title: string; key: string; color: HistorySeries["color"]; unit?: string }> = {
   outdoor: { title: "Udeluft · T1", key: "outdoor_temp", color: "blue" },
-  extract: { title: "Udsugning · T3", key: "extract_temp", color: "orange" },
+  extract: { title: "Fraluft · T3", key: "extract_temp", color: "orange" },
   exhaust: { title: "Afkast · T4", key: "exhaust_temp", color: "red" },
   afterHeater: { title: "T2AH efter eftervarme", key: "heating_coil_after_temperature", color: "green" },
   frost: { title: "Frostsensor", key: "heating_coil_frost_temperature", color: "blue" },
@@ -293,7 +293,7 @@ export function OverviewPage() {
 
   const afterheat = hasAfterheat(unit);
   const sensorHistory = afterheat ? SENSOR_HISTORY
-    : { ...SENSOR_HISTORY, afterHeater: { title: "Indblæsning · T2", key: "supply_temp", color: "green" as const } };
+    : { ...SENSOR_HISTORY, afterHeater: { title: "Tilluft · T2", key: "supply_temp", color: "green" as const } };
   const afterheatCard = (
     <article className="surface afterheat-setpoint-card">
       <AfterheatThermostat value={shownAfterheat} onChange={setAfterheatTarget} heating={heating} lockout={afterheatLockout}
@@ -360,15 +360,15 @@ export function OverviewPage() {
               <div className="climate-metric neutral"><Zap size={21}/><span>Strøm i dag{number(controller.unit_energy_measured_today_kwh) !== null ? " · målt" : " · anslået"}</span><strong>{energy(number(controller.unit_energy_measured_today_kwh) ?? number(controller.unit_energy_today_kwh))} <small>kWh</small></strong><em>Ca. {cost(number(controller.unit_energy_measured_today_kwh) ?? number(controller.unit_energy_today_kwh), number(controller.electricity_price_dkk_kwh))} ved aktuel elpris</em><i style={{ width: `${Math.min(100, (number(controller.unit_energy_measured_today_kwh) ?? number(controller.unit_energy_today_kwh) ?? 0) * 50)}%` }}/></div>
               {afterheat && <div className="climate-metric neutral"><Flame size={21}/><span>Eftervarme i dag · anslået</span><strong>{energy(number(controller.afterheat_energy_today_kwh))} <small>kWh</small></strong><em>Ca. {cost(number(controller.afterheat_energy_today_kwh), number(controller.heat_price_dkk_kwh))} ved aktuel varmepris</em><i style={{ width: `${Math.min(100, (number(controller.afterheat_energy_today_kwh) ?? 0) * 50)}%` }}/></div>}
             </div>
-            {/* Only with a measured T2 before the afterheat coil (1-Wire role "t2"). */}
+            {/* Only with a measured T2 before the afterheat coil: a 1-Wire role "t2", or the unit's own T2 without HAC1. */}
             {number(controller.actual_supply_before_heater_temperature) !== null && <>
-              <div className="pro-card-head compact air-calc-head"><div><h2>Genvinding og eftervarme · målt T2</h2><p>Luftmængde anslået for aktuelt trin{number(controller.supply_airflow_estimate_m3h) === null ? "" : ` · ${whole(number(controller.supply_airflow_estimate_m3h))} m³/h`}</p></div></div>
+              <div className="pro-card-head compact air-calc-head"><div><h2>{afterheat ? "Genvinding og eftervarme · målt T2" : "Genvinding · målt T2"}</h2><p>Luftmængde anslået for aktuelt trin{number(controller.supply_airflow_estimate_m3h) === null ? "" : ` · ${whole(number(controller.supply_airflow_estimate_m3h))} m³/h`}</p></div></div>
               <div className="climate-metrics">
-                <div className="climate-metric green"><Leaf size={21}/><span>Veksler · korrigeret T2</span><strong>{t2Recovery === null ? "—" : `≈${whole(t2Recovery)}`} <small>%</small></strong><em>{t2NeedsCheck ? "T2/T2AH afviger trods slukket eftervarme" : `T2 ${temp(number(controller.t2_offset_k))} · (T2 − T1) / (T3 − T1)`}</em><i style={{ width: `${Math.max(0, Math.min(100, t2Recovery ?? 0))}%` }}/></div>
+                <div className="climate-metric green"><Leaf size={21}/><span>{afterheat ? "Veksler · korrigeret T2" : "Genvinding · indblæsningsside"}</span><strong>{t2Recovery === null ? "—" : `≈${whole(t2Recovery)}`} <small>%</small></strong><em>{t2NeedsCheck ? "T2/T2AH afviger trods slukket eftervarme" : afterheat ? `T2 ${temp(number(controller.t2_offset_k))} · (T2 − T1) / (T3 − T1)` : "(T2 − T1) / (T3 − T1)"}</em><i style={{ width: `${Math.max(0, Math.min(100, t2Recovery ?? 0))}%` }}/></div>
                 <div className="climate-metric neutral"><Leaf size={21}/><span>Genvinding · udsugningsside</span><strong>{whole(recovery)} <small>%</small></strong><em>(T3 − T4) / (T3 − T1)</em><i style={{ width: `${Math.max(0, Math.min(100, recovery ?? 0))}%` }}/></div>
                 <div className="climate-metric cyan"><Wind size={21}/><span>Genvundet varme</span><strong>{whole(number(controller.recovered_heat_w))} <small>W</small></strong><em>Veksler → indblæsning</em><i style={{ width: `${Math.min(100, (number(controller.recovered_heat_w) ?? 0) / 30)}%` }}/></div>
-                <div className="climate-metric neutral"><span className="metric-heat">≋</span><span>T2AH − T2 · korrigeret T2</span><strong>{temp(t2Difference)}</strong><em>{heating ? "Eftervarme aktiv" : `Kun T2 korrigeret ${temp(number(controller.t2_offset_k))}`}</em><i style={{ width: `${Math.max(0, Math.min(100, (t2Difference ?? 0) * 10))}%` }}/></div>
-                <div className="climate-metric neutral"><Flame size={21}/><span>Varmeflade til luft</span><strong>{whole(number(controller.afterheat_power_w))} <small>W</small></strong><em>Ud fra T2AH − T2 · anslået</em><i style={{ width: `${Math.min(100, (number(controller.afterheat_power_w) ?? 0) / 20)}%` }}/></div>
+                {afterheat && <><div className="climate-metric neutral"><span className="metric-heat">≋</span><span>T2AH − T2 · korrigeret T2</span><strong>{temp(t2Difference)}</strong><em>{heating ? "Eftervarme aktiv" : `Kun T2 korrigeret ${temp(number(controller.t2_offset_k))}`}</em><i style={{ width: `${Math.max(0, Math.min(100, (t2Difference ?? 0) * 10))}%` }}/></div>
+                <div className="climate-metric neutral"><Flame size={21}/><span>Varmeflade til luft</span><strong>{whole(number(controller.afterheat_power_w))} <small>W</small></strong><em>Ud fra T2AH − T2 · anslået</em><i style={{ width: `${Math.min(100, (number(controller.afterheat_power_w) ?? 0) / 20)}%` }}/></div></>}
               </div>
             </>}
             {/* Extract duct loss: the HA average of the rooms with an extract valve against T3 and the loft. */}
